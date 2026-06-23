@@ -6,8 +6,16 @@ Projeto de estratégia e implementação de **ambientes efêmeros por clone** (G
 
 | Arquivo | Descrição |
 |---------|-----------|
+| [docs/apresentacao-cto.md](./docs/apresentacao-cto.md) | **Apresentação CTO** (~25 slides, formato Marp) |
+| [docs/APRESENTACAO-NOTAS-PALESTRA.md](./docs/APRESENTACAO-NOTAS-PALESTRA.md) | Notas do apresentador + roteiro 45 min |
 | [PROJETO-AMBIENTES-YOUSE-v2-CLONE.md](./PROJETO-AMBIENTES-YOUSE-v2-CLONE.md) | Proposta v2 — ambientes por clone (Golden Template) |
 | [PROJETO-AMBIENTES-YOUSE.pdf](./PROJETO-AMBIENTES-YOUSE.pdf) | Proposta v1.3 — base original (Jun/2026) |
+
+### Exportar apresentação
+
+1. Instale a extensão **Marp for VS Code**
+2. Abra `docs/apresentacao-cto.md`
+3. `Ctrl+Shift+P` → **Marp: Export Slide Deck** → PDF ou PPTX
 
 ## Estrutura do projeto
 
