@@ -1,0 +1,33 @@
+# Exemplo: solicitação de preview por branch
+# Disparado automaticamente via webhook GitHub ou manualmente pela API
+
+apiVersion: youse.io/v1
+kind: EphemeralEnvironment
+metadata:
+  name: you-123
+  labels:
+    branch: feature/YOU-123-nova-cotacao
+    jira: YOU-123
+    owner: squad-auto
+    purpose: dev-qa
+spec:
+  sourceTemplate: golden-qa
+  ttl: 72h
+  teardownPolicy: OnMerge
+  services:
+    - name: sales-frontend
+      repository: youse-seguradora/sales-frontend
+      ref: feature/YOU-123-nova-cotacao
+    - name: order-service
+      inheritFromTemplate: true
+  dataSeed:
+    version: "2026.06.1"
+  networking:
+    hostname: you-123.preview.youse.io
+  integrations:
+    mode: sandbox
+  notifications:
+    slack:
+      channel: "#ambientes-youse"
+    jira:
+      issue: YOU-123

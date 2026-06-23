@@ -1,0 +1,34 @@
+# Exemplo: ambiente efêmero para automação de testes
+# Ciclo: clone → testes → destroy (sempre)
+
+apiVersion: youse.io/v1
+kind: EphemeralEnvironment
+metadata:
+  name: auto-run-98765
+  labels:
+    purpose: automation
+    requester: qa-automation
+    pipeline: github-actions
+spec:
+  sourceTemplate: golden-automation
+  ttl: 4h
+  teardownPolicy: Always
+  services:
+    - name: youse
+      repository: youse-seguradora/youse
+      ref: abc123def456
+    - name: order-service
+      inheritFromTemplate: true
+    - name: sales-frontend
+      repository: youse-seguradora/sales-frontend
+      ref: abc123def456
+  dataSeed:
+    version: "2026.06.1"
+  networking:
+    hostname: run-98765.auto-preview.youse.io
+  tests:
+    repository: youse-seguradora/qa-e2e-tests-automation
+    suite: smoke
+    targetUrl: https://run-98765.auto-preview.youse.io
+  integrations:
+    mode: sandbox

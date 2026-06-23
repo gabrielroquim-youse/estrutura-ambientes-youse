@@ -1,0 +1,8 @@
+# Versão da massa de dados — incrementar a cada alteração de seed
+version: "2026.06.1"
+releasedAt: "2026-06-23"
+compatibleTemplates:
+  - golden-dev
+  - golden-qa
+  - golden-automation
+description: "Seed inicial UAT — usuários, apólices auto, toggles baseline"
