@@ -4,7 +4,7 @@
 **Organização:** Youse Seguradora  
 **Versão:** 2.0 | **Data:** Junho/2026  
 **Base:** [PROJETO-AMBIENTES-YOUSE.pdf](./PROJETO-AMBIENTES-YOUSE.pdf) v1.3  
-**Status:** Proposta evoluída para apresentação ao CTO e Plataforma
+**Status:** Em construção — validação com Time de Qualidade → Infra → liderança (futuro)
 
 ---
 
@@ -473,7 +473,7 @@ Ainda **muito menor** que o custo oculto de ~15–25h/semana de retrabalho (doc 
 | 0.2 | Definir `golden-seed` v1 + scripts idempotentes | QA + Plataforma |
 | 0.3 | Documentar serviços críticos por domínio (top 20) | Arquitetura |
 | 0.4 | Inventário 313 refs QA (planilha) | DevOps |
-| 0.5 | Aprovação CTO + orçamento capacity EKS | Liderança |
+| 0.5 | Alinhamento Qualidade + Infra; capacity EKS (fase Infra) | QA + Plataforma |
 
 ### Fase 1 — Golden Templates (Semanas 4–6)
 
@@ -557,11 +557,13 @@ Ainda **muito menor** que o custo oculto de ~15–25h/semana de retrabalho (doc 
 
 ## 15. Próximos passos imediatos
 
-1. **Aprovar** criação do repositório `youse-seguradora/environment-platform`  
-2. **Nomear** squad piloto (1 squad + `sales-frontend`)  
-3. **Workshop** 2h: QA + Plataforma → definir massa de dados v1 do `golden-qa`  
-4. **Spike** 1 sprint: POC clone L1 com `deployment-orb` + namespace + seed script  
-5. **Apresentar** este documento v2 ao CTO como evolução da v1.3  
+1. **Apresentar** proposta ao **Time de Qualidade** — co-criar e validar fluxos  
+2. **Workshop** 2h com QA → definir massa de dados v1 do `golden-qa` (`golden-seed`)  
+3. **Coletar feedback** e ajustar documentação v2  
+4. **Apresentar** versão revisada ao **Time de Infra / DevOps**  
+5. **Spike** 1 sprint (com Infra): POC clone L1 com `deployment-orb` + namespace + seed  
+6. **Nomear** squad piloto + repo (input de QA e Infra)  
+7. Repo `youse-seguradora/environment-platform` — criar quando Infra validar viabilidade  
 
 ---
 

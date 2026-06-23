@@ -1,20 +1,29 @@
 # Estrutura de Ambientes Youse
 
-Projeto de estratégia e implementação de **ambientes efêmeros por clone** (Golden Template) para a Youse Seguradora.
+Projeto **em construção** — estratégia e implementação de **ambientes efêmeros por clone** (Golden Template) para a Youse Seguradora.
+
+## Sequência de validação
+
+| Fase | Público | Status |
+|------|---------|--------|
+| 1 | **Time de Qualidade** | Em andamento |
+| 2 | Time de Infra / DevOps | Após feedback QA |
+| 3 | Liderança | Futuro — proposta madura |
 
 ## Documentos
 
 | Arquivo | Descrição |
 |---------|-----------|
-| [docs/apresentacao-cto.md](./docs/apresentacao-cto.md) | **Apresentação CTO** (~25 slides, formato Marp) |
-| [docs/APRESENTACAO-NOTAS-PALESTRA.md](./docs/APRESENTACAO-NOTAS-PALESTRA.md) | Notas do apresentador + roteiro 45 min |
+| [docs/apresentacao-time-qualidade.md](./docs/apresentacao-time-qualidade.md) | **Apresentação Qualidade** (~20 slides, Marp) |
+| [docs/APRESENTACAO-NOTAS-TIME-QUALIDADE.md](./docs/APRESENTACAO-NOTAS-TIME-QUALIDADE.md) | Notas do apresentador + roteiro 40 min |
+| [docs/apresentacao-time-infra.md](./docs/apresentacao-time-infra.md) | Apresentação Infra — placeholder (fase 2) |
 | [PROJETO-AMBIENTES-YOUSE-v2-CLONE.md](./PROJETO-AMBIENTES-YOUSE-v2-CLONE.md) | Proposta v2 — ambientes por clone (Golden Template) |
 | [PROJETO-AMBIENTES-YOUSE.pdf](./PROJETO-AMBIENTES-YOUSE.pdf) | Proposta v1.3 — base original (Jun/2026) |
 
 ### Exportar apresentação
 
 1. Instale a extensão **Marp for VS Code**
-2. Abra `docs/apresentacao-cto.md`
+2. Abra `docs/apresentacao-time-qualidade.md`
 3. `Ctrl+Shift+P` → **Marp: Export Slide Deck** → PDF ou PPTX
 
 ## Estrutura do projeto
@@ -34,7 +43,11 @@ environment-platform/     # Esqueleto da plataforma de ambientes
 
 ## Próximos passos
 
-Ver seção 15 do documento v2 e roadmap de 120 dias.
+1. Validar proposta com **Time de Qualidade** (workshop golden-seed)
+2. Ajustar documentação com feedback
+3. Apresentar para **Infra / DevOps** e iniciar spike técnico
+
+Ver seção 15 do documento v2.
 
 ---
 
