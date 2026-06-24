@@ -1,5 +1,73 @@
+# =============================================================================
+# .gitignore — Youse Environment Platform POC
+# =============================================================================
+
+# ---- OS ----
 .DS_Store
 Thumbs.db
-*.tmp
+desktop.ini
+
+# ---- Editors / IDEs ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---- Secrets & credenciais (NUNCA commitar) ----
 .env
 .env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+credentials/
+aws-credentials*
+kubeconfig*
+
+# ---- Node ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+
+# ---- Build / dist ----
+dist/
+build/
+out/
+*.tgz
+*.tar.gz
+
+# ---- Docker / volumes ----
+*.pid
+docker-data/
+pgdata/
+volumes/
+
+# ---- Terraform (caso adicione IaC) ----
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform.lock.hcl
+crash.log
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- Temp ----
+*.tmp
+*.bak
+tmp/
+.cache/
+
+# ---- POC: dumps locais / saídas de teste ----
+environment-platform/poc-real/**/*.dump
+environment-platform/poc-real/**/*.sql.gz
+environment-platform/poc-real/**/output/

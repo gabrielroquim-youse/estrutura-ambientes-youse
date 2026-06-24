@@ -1,0 +1,29 @@
+[
+  {
+    "id": "qa-auto-smoke-01",
+    "email": "qa-auto-smoke-01@youse.test",
+    "cpf": "00000000191",
+    "product": "auto",
+    "flows": ["login", "quote-smoke"],
+    "reservedFor": "ephemeral-runs",
+    "notes": "Conta dedicada — não usar em teste manual compartilhado"
+  },
+  {
+    "id": "qa-auto-smoke-02",
+    "email": "qa-auto-smoke-02@youse.test",
+    "cpf": "00000000272",
+    "product": "auto",
+    "flows": ["login", "quote-smoke"],
+    "reservedFor": "ephemeral-runs",
+    "notes": "Segunda conta para runs paralelos no POC sem Infra"
+  },
+  {
+    "id": "qa-uat-01",
+    "email": "qa-uat-01@youse.test",
+    "cpf": "00000000353",
+    "product": "auto",
+    "flows": ["quote-full", "issue-policy", "endorsement"],
+    "reservedFor": "golden-qa",
+    "notes": "Fluxos UAT completos — definir com time QA"
+  }
+]

@@ -1,0 +1,121 @@
+# =============================================================================
+# docker-compose.preview.yml
+#
+# POC VISUAL — Simula um preview environment completo no browser.
+#
+# Sobe:
+#   - postgres-qa-simulado   → banco "monolithic_qa" (simula QA da Youse)
+#   - clone-db (init job)    → cria preview_you_123 via CREATE DATABASE TEMPLATE
+#   - api-preview            → API REST mostrando dados do banco CLONADO
+#   - frontend-preview       → Página web mostrando "Youse - Preview Branch YOU-123"
+#   - pgadmin                → Visualizador de banco para ver QA vs preview
+#
+# URLs apos subir:
+#   http://localhost:3000     → Frontend do preview (simula sales-frontend)
+#   http://localhost:4000     → API REST do preview (dados do banco clonado)
+#   http://localhost:5050     → pgAdmin (ver banco QA vs preview lado a lado)
+#
+# Uso:
+#   docker compose -f docker-compose.preview.yml up -d
+#   start http://localhost:3000
+# =============================================================================
+
+services:
+
+  # ----------------------------------------------------------------------------
+  # PostgreSQL — simula o RDS de QA da Youse (monolithic_qa)
+  # ----------------------------------------------------------------------------
+  postgres-qa-simulado:
+    image: postgres:14-alpine
+    container_name: poc-qa-simulado
+    environment:
+      POSTGRES_USER: youse
+      POSTGRES_PASSWORD: poc_local_only
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./seed-qa-simulado.sql:/docker-entrypoint-initdb.d/00-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U youse -d monolithic_qa"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  # ----------------------------------------------------------------------------
+  # Job: clona o banco QA → preview (roda 1x apos QA estar pronto)
+  # ----------------------------------------------------------------------------
+  clone-db-job:
+    image: postgres:14-alpine
+    container_name: poc-clone-job
+    depends_on:
+      postgres-qa-simulado:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: poc_local_only
+    entrypoint:
+      - sh
+      - -c
+      - |
+        echo "▶ Clonando monolithic_qa → preview_you_123 ..."
+        psql -h postgres-qa-simulado -U youse -d postgres -c \
+          "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='monolithic_qa' AND pid <> pg_backend_pid();" >/dev/null 2>&1 || true
+
+        # Idempotente: se ja existe, mantem
+        psql -h postgres-qa-simulado -U youse -d postgres -tAc \
+          "SELECT 1 FROM pg_database WHERE datname='preview_you_123'" | grep -q 1 \
+        && echo "✓ Banco preview_you_123 ja existe" \
+        || (psql -h postgres-qa-simulado -U youse -d postgres -c \
+              "CREATE DATABASE preview_you_123 TEMPLATE monolithic_qa;" \
+            && echo "✓ Clone preview_you_123 criado")
+    restart: "no"
+
+  # ----------------------------------------------------------------------------
+  # API REST — le do banco CLONADO (preview_you_123)
+  # Simula um microservico da Youse
+  # ----------------------------------------------------------------------------
+  api-preview:
+    image: postgrest/postgrest:v12.0.2
+    container_name: poc-api-preview
+    depends_on:
+      clone-db-job:
+        condition: service_completed_successfully
+    environment:
+      # Aponta para o BANCO CLONADO, nao o QA
+      PGRST_DB_URI: postgres://youse:poc_local_only@postgres-qa-simulado:5432/preview_you_123
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: youse
+      PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:4000
+    ports:
+      - "4000:3000"
+
+  # ----------------------------------------------------------------------------
+  # Frontend — pagina web do preview YOU-123
+  # ----------------------------------------------------------------------------
+  frontend-preview:
+    image: nginx:alpine
+    container_name: poc-frontend-preview
+    depends_on:
+      - api-preview
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    ports:
+      - "3000:80"
+
+  # ----------------------------------------------------------------------------
+  # pgAdmin — visualizar QA original vs preview clonado lado a lado
+  # ----------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: poc-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@youse.test
+      PGADMIN_DEFAULT_PASSWORD: poc
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - ./pgadmin-servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres-qa-simulado

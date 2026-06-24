@@ -567,6 +567,24 @@ Ainda **muito menor** que o custo oculto de ~15–25h/semana de retrabalho (doc 
 
 ---
 
+## 16. Guia prático — ferramentas e POC sem Infra
+
+Documento detalhado: **[docs/GUIA-PRATICO-AMBIENTES-FERRAMENTAS.md](./docs/GUIA-PRATICO-AMBIENTES-FERRAMENTAS.md)**
+
+Resumo:
+
+| Pergunta | Resposta |
+|----------|----------|
+| Quais ferramentas? | EKS, Helm, CircleCI/`deployment-orb`, Terraform, Playwright, golden-seed |
+| Clone real no EKS? | **Precisa Infra** (DNS, namespace, orb, RDS) |
+| Testar conceito sem Infra? | **Sim** — golden-seed, simulador, Playwright com contas isoladas, GHA |
+
+**Trilha Qualidade (agora):** `environment-platform/golden-seed/` + `poc-simulador/` neste repo.
+
+**Trilha Infra (depois):** DNS wildcard + jobs no `deployment-orb` + piloto L1.
+
+---
+
 ## Anexo — Referências internas Youse
 
 | Repo | Uso no projeto |

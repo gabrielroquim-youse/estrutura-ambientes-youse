@@ -1,0 +1,47 @@
+name: Validate Ephemeral Environment YAML
+
+on:
+  push:
+    paths:
+      - 'environment-platform/examples/**'
+      - 'environment-platform/poc-simulador/**'
+      - 'environment-platform/golden-seed/**'
+  pull_request:
+    paths:
+      - 'environment-platform/**'
+  workflow_dispatch:
+
+jobs:
+  validate-yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check YAML syntax
+        run: |
+          for f in environment-platform/examples/*.yaml; do
+            echo "Validando: $f"
+            python -c "import yaml; yaml.safe_load(open('$f'))" 2>/dev/null || \
+              ruby -ryaml -e "YAML.load_file('$f')" 2>/dev/null || \
+              grep -q 'apiVersion:' "$f"
+            grep -q 'kind: EphemeralEnvironment' "$f" || (echo "ERRO: kind ausente em $f" && exit 1)
+            grep -q 'sourceTemplate:' "$f" || (echo "ERRO: sourceTemplate ausente em $f" && exit 1)
+            grep -q 'teardownPolicy:' "$f" || (echo "ERRO: teardownPolicy ausente em $f" && exit 1)
+            echo "OK: $f"
+          done
+
+      - name: Validate golden-seed version
+        run: |
+          test -f environment-platform/golden-seed/version.yaml
+          grep -q 'version:' environment-platform/golden-seed/version.yaml
+          echo "OK: golden-seed/version.yaml"
+
+      - name: Run validate-seed (if bash available)
+        run: |
+          chmod +x environment-platform/golden-seed/scripts/validate-seed.sh
+          environment-platform/golden-seed/scripts/validate-seed.sh
+
+      - name: Simulate clone (dry-run)
+        run: |
+          chmod +x environment-platform/poc-simulador/simulate-clone.sh
+          environment-platform/poc-simulador/simulate-clone.sh environment-platform/examples/branch-preview-request.yaml

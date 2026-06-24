@@ -1,0 +1,358 @@
+# =============================================================================
+# GitHub Actions — Preview Environment por Branch (POC Youse)
+#
+# Fluxo completo (dados reais da Youse):
+#   1. Dev abre PR em feature/YOU-XXX
+#   2. Detecta QUAIS serviços foram alterados (git diff)
+#   3. Clona banco do QA via CREATE DATABASE ... TEMPLATE (PostgreSQL RDS)
+#      Credenciais: AWS Secrets Manager  qa/rds/admin/<rds-name>
+#      Role AWS:    arn:aws:iam::514007640321:role/circleci
+#      Região:      sa-east-1
+#   4. Sobe SOMENTE os serviços alterados apontando para o banco clonado
+#   5. Comenta na PR: URL, serviços na branch, serviços herdados do golden
+#   6. PR fecha/merge → destroy do banco e dos containers
+#
+# Secrets necessários no repo (Settings → Secrets):
+#   AWS_ROLE_ARN            = arn:aws:iam::514007640321:role/circleci
+#   AWS_REGION              = sa-east-1  (ou variável de ambiente)
+#
+# RDS mapeados (terraform-platform/qa):
+#   shared-qa-v12     → secret: qa/rds/admin/shared-qa-v12
+#   monolithic        → secret: qa/rds/admin/monolithic
+#   pricing-engine    → secret: qa/rds/admin/pricing-engine
+# =============================================================================
+
+name: Preview Environment
+
+on:
+  pull_request:
+    branches: [main, master]
+    types: [opened, synchronize, reopened, closed]
+
+  workflow_dispatch:
+    inputs:
+      services:
+        description: 'Serviços a subir (separados por vírgula). Vazio = detecta automaticamente'
+        required: false
+        default: ''
+      rds_name:
+        description: 'RDS de QA a clonar (ex: shared-qa-v12, monolithic)'
+        required: false
+        default: 'shared-qa-v12'
+
+concurrency:
+  group: preview-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  PREVIEW_NAME: you-${{ github.event.pull_request.number || github.run_id }}
+  AWS_REGION: sa-east-1
+  # RDS padrão — sobrescreva por serviço conforme necessário
+  RDS_NAME: shared-qa-v12
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # JOB 1: detecta quais serviços mudaram
+  # ---------------------------------------------------------------------------
+  detect:
+    name: Detectar serviços alterados
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+      services_json: ${{ steps.detect.outputs.services_json }}
+      has_changes: ${{ steps.detect.outputs.has_changes }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # necessário para git diff funcionar
+
+      - name: Detectar serviços alterados
+        id: detect
+        run: |
+          chmod +x environment-platform/poc-real/detect-changed-services.sh
+
+          # Se workflow_dispatch com serviços manuais, usa esses
+          if [[ -n "${{ github.event.inputs.services }}" ]]; then
+            SERVICES="${{ github.event.inputs.services }}"
+            echo "Modo manual: $SERVICES"
+          else
+            # Detecta automaticamente pelo diff da branch
+            SERVICES=$(./environment-platform/poc-real/detect-changed-services.sh \
+              origin/${{ github.base_ref }} HEAD 2>&1 | grep -v '^[▶⚠ ]' || true)
+          fi
+
+          if [[ -z "$SERVICES" ]]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "services=" >> $GITHUB_OUTPUT
+            echo "services_json=[]" >> $GITHUB_OUTPUT
+          else
+            # Converte para JSON array para usar no matrix (se necessário)
+            SERVICES_JSON=$(echo "$SERVICES" | jq -R -s 'split("\n") | map(select(. != ""))')
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "services<<EOF" >> $GITHUB_OUTPUT
+            echo "$SERVICES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "services_json=$SERVICES_JSON" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Resumo
+        run: |
+          echo "## Serviços detectados" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.detect.outputs.services }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ---------------------------------------------------------------------------
+  # JOB 2: clona o banco de QA para o preview (PostgreSQL TEMPLATE)
+  # ---------------------------------------------------------------------------
+  clone-db:
+    name: Clonar banco QA → preview-${{ github.event.pull_request.number }}
+    runs-on: ubuntu-latest
+    needs: detect
+    if: needs.detect.outputs.has_changes == 'true' && github.event.action != 'closed'
+    outputs:
+      db_name: ${{ steps.clone.outputs.db_name }}
+      db_host: ${{ steps.clone.outputs.db_host }}
+
+    permissions:
+      id-token: write   # necessário para OIDC com AWS
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Autentica na AWS usando a mesma role do CircleCI da Youse
+      - name: Autenticar na AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          # Fallback para POC: arn:aws:iam::514007640321:role/circleci
+          aws-region: sa-east-1
+
+      - name: Instalar psql
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Clonar banco QA
+        id: clone
+        run: |
+          chmod +x environment-platform/poc-real/db/clone-db.sh
+
+          # RDS: usa input manual se disponível, senão usa o padrão
+          RDS="${{ github.event.inputs.rds_name || env.RDS_NAME }}"
+
+          ./environment-platform/poc-real/db/clone-db.sh \
+            "${{ env.PREVIEW_NAME }}" \
+            "$RDS"
+
+          # Carrega variáveis exportadas pelo clone-db.sh
+          if [[ -f "/tmp/preview-${{ env.PREVIEW_NAME }}.env" ]]; then
+            source /tmp/preview-${{ env.PREVIEW_NAME }}.env
+            echo "db_name=$PREVIEW_DB_NAME" >> $GITHUB_OUTPUT
+            echo "db_host=$PREVIEW_DB_HOST" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Resumo do clone
+        run: |
+          echo "## Banco de preview clonado" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Campo | Valor |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Banco | \`${{ steps.clone.outputs.db_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Host  | \`${{ steps.clone.outputs.db_host }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Origem | QA via \`CREATE DATABASE ... TEMPLATE\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dados | Massa real do QA (isolada) |" >> $GITHUB_STEP_SUMMARY
+
+  # ---------------------------------------------------------------------------
+  # JOB 3: sobe somente os serviços alterados apontando para o banco clonado
+  # ---------------------------------------------------------------------------
+  provision:
+    name: Provisionar preview ${{ env.PREVIEW_NAME }}
+    runs-on: ubuntu-latest
+    needs: [detect, clone-db]
+    if: needs.detect.outputs.has_changes == 'true' && github.event.action != 'closed'
+
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Autenticar na AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: sa-east-1
+
+      # Para repos separados (padrão 1 repo = 1 serviço da Youse):
+      # faz checkout de cada serviço alterado na branch do dev
+      - name: Checkout serviços alterados
+        run: |
+          echo "Serviços a provisionar:"
+          echo "${{ needs.detect.outputs.services }}"
+
+          # Descomente para repos reais da Youse:
+          # for svc in ${{ needs.detect.outputs.services }}; do
+          #   git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/youse-seguradora/$svc ./services/$svc
+          #   cd ./services/$svc && git checkout ${{ github.head_ref }} && cd ../..
+          # done
+
+      - name: Gerar override com serviços da branch + banco clonado
+        run: |
+          chmod +x environment-platform/poc-real/clone-selective.sh
+
+          # Injeta o banco clonado como variável de ambiente do override
+          export PREVIEW_DB_HOST="${{ needs.clone-db.outputs.db_host }}"
+          export PREVIEW_DB_NAME="${{ needs.clone-db.outputs.db_name }}"
+
+          ./environment-platform/poc-real/clone-selective.sh \
+            "${{ env.PREVIEW_NAME }}" \
+            "${{ needs.detect.outputs.services }}"
+
+      - name: Validar compose (POC — sem subir containers)
+        run: |
+          docker compose \
+            -f environment-platform/poc-real/docker-compose.golden.yml \
+            -f /tmp/preview-${{ env.PREVIEW_NAME }}.override.yml \
+            config > /dev/null
+          echo "✓ Compose válido — serviços da branch + banco clonado do QA"
+
+          # Para infra real, substituir 'config' por 'up -d':
+          # SERVICES_LIST=$(echo "${{ needs.detect.outputs.services }}" | tr '\n' ' ')
+          # docker compose ... up -d $SERVICES_LIST
+
+      - name: Comentar na PR com URL do preview
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const previewName = '${{ env.PREVIEW_NAME }}';
+            const dbName = '${{ needs.clone-db.outputs.db_name }}';
+            const dbHost = '${{ needs.clone-db.outputs.db_host }}';
+            const services = `${{ needs.detect.outputs.services }}`.trim().split('\n').filter(Boolean);
+            const allServices = ['sales-frontend', 'order-service', 'policy-service', 'payment-service'];
+            const inheritedServices = allServices.filter(s => !services.includes(s));
+
+            const servicesTable = services.map(s =>
+              `| \`${s}\` | ✅ Branch \`${{ github.head_ref }}\` |`
+            ).join('\n');
+            const inheritTable = inheritedServices.map(s =>
+              `| \`${s}\` | ⬆️ Herda do golden template (Stage) |`
+            ).join('\n');
+
+            const body = [
+              `## Preview Environment — \`${previewName}\``,
+              '',
+              `**URL:** \`https://${previewName}.preview.youse.io\` _(disponível após Infra — Fase 2)_`,
+              `**TTL:** 72h após último commit | Destroy automático no merge/close`,
+              '',
+              '### Serviços',
+              '',
+              '| Serviço | Versão |',
+              '|---------|--------|',
+              servicesTable,
+              inheritTable,
+              '',
+              '### Banco de dados',
+              '',
+              '| Campo | Valor |',
+              '|-------|-------|',
+              `| Banco preview | \`${dbName}\` |`,
+              `| Origem | Clone do QA via \`CREATE DATABASE TEMPLATE\` |`,
+              `| Dados | Massa real do QA — isolada, sem afetar qa.youse.io |`,
+              '',
+              '> Serviços herdados apontam para o QA estável — sem redeploy.',
+              '',
+              `_[Ver run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})_`
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c =>
+              c.user.login === 'github-actions[bot]' &&
+              c.body.includes('Preview Environment')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
+
+  # ---------------------------------------------------------------------------
+  # JOB 4: destroy quando PR fecha ou merge
+  #   - Remove banco de preview do RDS de QA
+  #   - Para containers (quando infra real estiver ativa)
+  # ---------------------------------------------------------------------------
+  destroy:
+    name: Destroy preview ${{ env.PREVIEW_NAME }}
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Autenticar na AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: sa-east-1
+
+      - name: Instalar psql
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Destroy banco de preview
+        run: |
+          chmod +x environment-platform/poc-real/db/destroy-db.sh
+          RDS="${{ github.event.inputs.rds_name || env.RDS_NAME }}"
+          ./environment-platform/poc-real/db/destroy-db.sh \
+            "${{ env.PREVIEW_NAME }}" \
+            "$RDS"
+
+      - name: Destroy containers (simulado no POC)
+        run: |
+          chmod +x environment-platform/poc-simulador/simulate-destroy.sh
+          ./environment-platform/poc-simulador/simulate-destroy.sh "${{ env.PREVIEW_NAME }}"
+
+      - name: Comentar na PR — ambiente destruído
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const reason = context.payload.pull_request.merged ? 'merge' : 'fechamento de PR';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## 🗑️ Preview \`${{ env.PREVIEW_NAME }}\` destruído\n\nMotivo: ${reason}\n\nTodos os recursos do namespace foram removidos.`
+            });

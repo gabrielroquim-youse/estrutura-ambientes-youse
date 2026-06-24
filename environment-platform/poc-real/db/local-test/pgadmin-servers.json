@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "QA simulado (monolithic_qa)",
+      "Group": "Servers",
+      "Host": "postgres-qa-simulado",
+      "Port": 5432,
+      "MaintenanceDB": "postgres",
+      "Username": "youse",
+      "PassFile": "/pgpass",
+      "SSLMode": "prefer"
+    }
+  }
+}

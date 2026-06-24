@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Youse Preview — YOU-123</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .preview-banner {
+            background: #ff6b35;
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .preview-banner .badge {
+            background: rgba(0,0,0,0.3);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 {
+            font-size: 32px;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+        .subtitle {
+            color: #8b9dc3;
+            margin-bottom: 32px;
+            font-size: 15px;
+        }
+        .metadata {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .meta-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 16px;
+            border-radius: 8px;
+        }
+        .meta-card .label {
+            color: #8b9dc3;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .meta-card .value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            word-break: break-all;
+        }
+        .meta-card.green .value { color: #4ade80; }
+        .meta-card.orange .value { color: #ff6b35; }
+
+        .section {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .section h2 {
+            font-size: 20px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .loading { color: #8b9dc3; padding: 20px; text-align: center; }
+        .error { color: #ef4444; padding: 12px; background: rgba(239,68,68,0.1); border-radius: 6px; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        th {
+            color: #8b9dc3;
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        td { color: #e5e7eb; font-size: 14px; }
+        tr:hover td { background: rgba(255,255,255,0.03); }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            background: #ff6b35;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn.secondary { background: rgba(255,255,255,0.1); }
+
+        .footer {
+            text-align: center;
+            color: #6b7280;
+            padding: 24px;
+            font-size: 13px;
+        }
+        .footer a { color: #8b9dc3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="preview-banner">
+            <span class="badge">PREVIEW</span>
+            <span>Você está em um ambiente <strong>efêmero clonado do QA</strong> — não é produção</span>
+        </div>
+
+        <h1>Youse Seguradora — Preview YOU-123</h1>
+        <p class="subtitle">Branch <code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:3px">feature/YOU-123-nova-cotacao</code> · Criado automaticamente quando a PR foi aberta</p>
+
+        <div class="metadata">
+            <div class="meta-card orange">
+                <div class="label">Ambiente</div>
+                <div class="value">preview-you-123</div>
+            </div>
+            <div class="meta-card green">
+                <div class="label">Banco de dados</div>
+                <div class="value">preview_you_123</div>
+            </div>
+            <div class="meta-card">
+                <div class="label">Origem do clone</div>
+                <div class="value">monolithic_qa</div>
+            </div>
+            <div class="meta-card">
+                <div class="label">TTL</div>
+                <div class="value">72h ou no merge</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>👥 Usuários (massa de dados do QA clonada)</h2>
+            <div id="users-content" class="loading">Carregando da API...</div>
+        </div>
+
+        <div class="section">
+            <h2>📄 Apólices</h2>
+            <div id="policies-content" class="loading">Carregando da API...</div>
+        </div>
+
+        <div class="section">
+            <h2>🛒 Pedidos</h2>
+            <div id="orders-content" class="loading">Carregando da API...</div>
+        </div>
+
+        <div class="section">
+            <h2>🧪 Testar isolamento</h2>
+            <p style="color:#8b9dc3;margin-bottom:12px">
+                Insira um usuário no preview e veja que o QA original NÃO é afetado.
+            </p>
+            <div class="actions">
+                <button class="btn" onclick="addTestUser()">+ Inserir usuário de teste no preview</button>
+                <a href="http://localhost:5050" class="btn secondary" target="_blank">Abrir pgAdmin (comparar QA vs preview)</a>
+                <a href="http://localhost:4000" class="btn secondary" target="_blank">Ver API REST direta</a>
+            </div>
+            <div id="action-result" style="margin-top:12px"></div>
+        </div>
+
+        <div class="footer">
+            <p>Preview gerado por <strong>estrutura-ambientes-youse</strong> — POC junho/2026</p>
+            <p>Em produção, esta URL seria <code>you-123.preview.youse.io</code></p>
+        </div>
+    </div>
+
+    <script>
+        const API = 'http://localhost:4000';
+
+        async function loadData() {
+            await Promise.all([
+                loadTable('users', 'users-content', ['id', 'cpf', 'name', 'email']),
+                loadTable('policies', 'policies-content', ['policy_number', 'product', 'status', 'premium']),
+                loadTable('orders', 'orders-content', ['id', 'user_id', 'status', 'total']),
+            ]);
+        }
+
+        async function loadTable(endpoint, containerId, columns) {
+            const container = document.getElementById(containerId);
+            try {
+                const res = await fetch(`${API}/${endpoint}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                if (!data.length) {
+                    container.innerHTML = '<p class="loading">Nenhum registro</p>';
+                    return;
+                }
+
+                let html = '<table><thead><tr>';
+                columns.forEach(c => html += `<th>${c}</th>`);
+                html += '</tr></thead><tbody>';
+                data.forEach(row => {
+                    html += '<tr>';
+                    columns.forEach(c => html += `<td>${row[c] ?? ''}</td>`);
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            } catch (err) {
+                container.innerHTML = `<div class="error">Erro ao carregar ${endpoint}: ${err.message}<br><small>A API pode estar inicializando. Recarregue em alguns segundos.</small></div>`;
+            }
+        }
+
+        async function addTestUser() {
+            const result = document.getElementById('action-result');
+            const timestamp = Date.now();
+            const cpf = `999.${String(timestamp).slice(-3)}.${String(timestamp).slice(-6,-3)}-99`;
+
+            try {
+                const res = await fetch(`${API}/users`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=representation'
+                    },
+                    body: JSON.stringify({
+                        cpf: cpf,
+                        name: `Teste Branch ${timestamp}`,
+                        email: `test.${timestamp}@youse.preview`
+                    })
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+                const created = await res.json();
+                result.innerHTML = `<div style="color:#4ade80;padding:12px;background:rgba(74,222,128,0.1);border-radius:6px">
+                    ✓ Inserido no preview_you_123 (não afeta monolithic_qa).<br>
+                    <small>${JSON.stringify(created[0] || created)}</small>
+                </div>`;
+                loadData();
+            } catch (err) {
+                result.innerHTML = `<div class="error">${err.message}</div>`;
+            }
+        }
+
+        loadData();
+        setInterval(loadData, 10000);
+    </script>
+</body>
+</html>

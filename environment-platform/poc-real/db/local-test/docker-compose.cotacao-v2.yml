@@ -1,0 +1,150 @@
+# =============================================================================
+# docker-compose.cotacao-v2.yml — POC completa com fluxo real Youse + email
+#
+# Serviços:
+#   postgres-qa-simulado  → simula RDS monolithic_qa (port 5433)
+#   clone-db-job          → cria preview_you_123 via CREATE DATABASE TEMPLATE
+#   api-cotacao           → API Node (Express + nodemailer + pg) na 4000
+#   frontend-cotacao      → nginx servindo as 4 telas (index/lead/vehicle/quote) na 3000
+#   mailpit               → captura SMTP local com UI tipo Gmail (1025 SMTP, 8025 UI)
+#   pgadmin               → inspetor de banco (5050)
+#
+# Como rodar:
+#   cd environment-platform/poc-real/db/local-test
+#   docker compose -f docker-compose.cotacao-v2.yml up --build -d
+#
+# Acessos:
+#   http://localhost:3000  → Landing Youse (clica em "COTE GRÁTIS" no Auto)
+#   http://localhost:8025  → Caixa de entrada (Mailpit, vê emails recebidos)
+#   http://localhost:5050  → pgAdmin (login: poc@poc.com / senha: poc)
+#   http://localhost:4000/api/health → API health
+#
+# Para receber em e-mail REAL:
+#   Edite o serviço api-cotacao abaixo e descomente as envs SMTP_HOST/USER/PASS.
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # RDS simulado: PG 14-alpine (versao que Youse usa em monolithic-qa)
+  # ---------------------------------------------------------------------------
+  postgres-qa-simulado:
+    image: postgres:14-alpine
+    container_name: poc-pg-qa
+    environment:
+      POSTGRES_USER: youse
+      POSTGRES_PASSWORD: poc_local_only
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./seed-qa-v2.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
+      - pg_data_v2:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U youse -d monolithic_qa"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # ---------------------------------------------------------------------------
+  # Job de clone: roda uma vez, cria preview_you_123 a partir de monolithic_qa
+  # ---------------------------------------------------------------------------
+  clone-db-job:
+    image: postgres:14-alpine
+    container_name: poc-clone-job
+    depends_on:
+      postgres-qa-simulado:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: poc_local_only
+      PG_HOST: postgres-qa-simulado
+      PG_USER: youse
+      PG_TEMPLATE: monolithic_qa
+      PG_PREVIEW: preview_you_123
+    volumes:
+      - ./clone-db-init.sh:/clone-db-init.sh:ro
+    entrypoint: ["sh", "/clone-db-init.sh"]
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # API Node — pricing + envio de email + persistencia
+  # ---------------------------------------------------------------------------
+  api-cotacao:
+    build:
+      context: ./api-cotacao
+    container_name: poc-api-cotacao
+    depends_on:
+      clone-db-job:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+    environment:
+      DB_HOST: postgres-qa-simulado
+      DB_PORT: 5432
+      DB_USER: youse
+      DB_PASSWORD: poc_local_only
+      DB_NAME: preview_you_123
+      BRANCH_NAME: feature/YOU-123-nova-cotacao
+      # ---- SMTP local (Mailpit) — padrao ----
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_FROM: "Youse Preview <noreply@preview.youse.test>"
+      # ---- SMTP real (descomente p/ receber em email de verdade) ----
+      # SMTP_HOST: smtp.gmail.com
+      # SMTP_PORT: 587
+      # SMTP_USER: seuemail@gmail.com
+      # SMTP_PASS: <app-password-gerado-no-gmail>
+      # SMTP_FROM: "Youse Preview <seuemail@gmail.com>"
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Frontend — landing + fluxo de cotacao (4 paginas)
+  # ---------------------------------------------------------------------------
+  frontend-cotacao:
+    image: nginx:alpine
+    container_name: poc-frontend
+    depends_on:
+      - api-cotacao
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend-cotacao:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Mailpit — captura SMTP + UI estilo Gmail
+  # ---------------------------------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: poc-mailpit
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # pgAdmin
+  # ---------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: poc-pgadmin
+    depends_on:
+      - postgres-qa-simulado
+    environment:
+      PGADMIN_DEFAULT_EMAIL: poc@poc.com
+      PGADMIN_DEFAULT_PASSWORD: poc
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - ./pgadmin-servers.json:/pgadmin4/servers.json:ro
+    restart: unless-stopped
+
+volumes:
+  pg_data_v2:

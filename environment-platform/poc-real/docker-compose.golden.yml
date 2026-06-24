@@ -1,0 +1,151 @@
+# =============================================================================
+# docker-compose.golden.yml — Golden Template (POC local)
+#
+# Representa o "golden-qa": todos os serviços na versão base (Stage).
+# No clone seletivo, SOMENTE os serviços alterados na branch sobem aqui.
+# Os demais são comentados (herdam do ambiente compartilhado).
+#
+# Para rodar localmente:
+#   docker compose -f docker-compose.golden.yml up <nome-do-servico>
+# =============================================================================
+
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# Rede isolada por preview (simula namespace K8s)
+# ---------------------------------------------------------------------------
+networks:
+  preview-net:
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# Volumes para dados persistentes do preview
+# ---------------------------------------------------------------------------
+volumes:
+  preview-db-data:
+
+# ---------------------------------------------------------------------------
+# Serviços — versões do golden template (main/stage)
+# O clone-selective.sh gera um override com as versões da branch do dev
+# ---------------------------------------------------------------------------
+services:
+
+  # ------------------------------------------------------------------
+  # Banco de dados compartilhado do preview (seed idempotente)
+  # ------------------------------------------------------------------
+  preview-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: youse_preview
+      POSTGRES_USER: youse
+      POSTGRES_PASSWORD: preview_only_not_prod  # nunca prod
+    volumes:
+      - preview-db-data:/var/lib/postgresql/data
+      # Seed idempotente do golden
+      - ../../golden-seed/scripts/validate-seed.sh:/docker-entrypoint-initdb.d/validate.sh:ro
+    ports:
+      - "5432"
+    networks:
+      - preview-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U youse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ------------------------------------------------------------------
+  # Mock de integrações externas (nunca sandbox real de prod no POC)
+  # WireMock simula: seguradora, pagamento, CRM
+  # ------------------------------------------------------------------
+  integrations-mock:
+    image: wiremock/wiremock:3.3.1
+    command: ["--global-response-templating", "--verbose"]
+    volumes:
+      - ./mocks:/home/wiremock/mappings:ro
+    ports:
+      - "8080"
+    networks:
+      - preview-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/__admin/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ------------------------------------------------------------------
+  # sales-frontend — versão golden (main)
+  # O override substitui a imagem pela versão da branch quando alterado
+  # ------------------------------------------------------------------
+  sales-frontend:
+    # Imagem da versão main/stage (golden)
+    # Troque pelo registry real: image: 123456.dkr.ecr.us-east-1.amazonaws.com/sales-frontend:main
+    image: nginx:alpine  # placeholder para o POC
+    environment:
+      NODE_ENV: preview
+      API_BASE_URL: http://order-service:3000
+      INTEGRATIONS_URL: http://integrations-mock:8080
+    networks:
+      - preview-net
+    depends_on:
+      - order-service
+      - integrations-mock
+    labels:
+      youse.preview.service: "sales-frontend"
+      youse.preview.source: "golden-template"  # override muda para "branch"
+
+  # ------------------------------------------------------------------
+  # order-service — versão golden (main)
+  # ------------------------------------------------------------------
+  order-service:
+    image: nginx:alpine  # placeholder — use a imagem real do ECR
+    environment:
+      NODE_ENV: preview
+      DB_HOST: preview-db
+      DB_NAME: youse_preview
+      DB_USER: youse
+      DB_PASSWORD: preview_only_not_prod
+      INTEGRATIONS_URL: http://integrations-mock:8080
+    networks:
+      - preview-net
+    depends_on:
+      preview-db:
+        condition: service_healthy
+    labels:
+      youse.preview.service: "order-service"
+      youse.preview.source: "golden-template"
+
+  # ------------------------------------------------------------------
+  # policy-service — versão golden (main)
+  # ------------------------------------------------------------------
+  policy-service:
+    image: nginx:alpine  # placeholder
+    environment:
+      NODE_ENV: preview
+      DB_HOST: preview-db
+      ORDER_SERVICE_URL: http://order-service:3000
+    networks:
+      - preview-net
+    depends_on:
+      preview-db:
+        condition: service_healthy
+    labels:
+      youse.preview.service: "policy-service"
+      youse.preview.source: "golden-template"
+
+  # ------------------------------------------------------------------
+  # payment-service — versão golden (main)
+  # ------------------------------------------------------------------
+  payment-service:
+    image: nginx:alpine  # placeholder
+    environment:
+      NODE_ENV: preview
+      DB_HOST: preview-db
+      INTEGRATIONS_URL: http://integrations-mock:8080
+    networks:
+      - preview-net
+    depends_on:
+      preview-db:
+        condition: service_healthy
+    labels:
+      youse.preview.service: "payment-service"
+      youse.preview.source: "golden-template"

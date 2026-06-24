@@ -1,0 +1,113 @@
+# Mapa de Bancos de Dados — QA da Youse
+# Fonte: youse-seguradora/terraform-platform (auditoria junho/2026)
+#
+# Usado por clone-db.sh para saber:
+#   - Qual RDS clonar
+#   - Qual banco (db_name) é o template
+#   - Qual secret no Secrets Manager buscar as credenciais
+#
+# IMPORTANTE: mantenha sincronizado com terraform-platform/qa/**/**/rds.tf
+
+rds_instances:
+
+  # ---------------------------------------------------------------------------
+  # RDS Compartilhado — múltiplos serviços no mesmo banco
+  # Maioria dos serviços do monolito/microserviços legados
+  # ---------------------------------------------------------------------------
+  - name: shared-qa-v12
+    engine: postgres
+    engine_version: "12.11"
+    instance_class: db.t4g.small
+    db_name: postgres         # db_name padrão do RDS compartilhado
+    secret: qa/rds/admin/shared-qa-v12
+    clone_strategy: CREATE_DATABASE_TEMPLATE
+    notes: "RDS compartilhado — vários serviços. Clone instantâneo via TEMPLATE."
+
+  - name: rds-shared-qa-upgraded
+    engine: postgres
+    engine_version: "12.12"
+    instance_class: db.t4g.small
+    db_name: notifier_qa
+    secret: qa/rds/admin/shared-qa-v12   # mesmo secret (upgraded do shared)
+    clone_strategy: CREATE_DATABASE_TEMPLATE
+    notes: "Upgrade do shared-v12 — notifier e serviços associados"
+
+  # ---------------------------------------------------------------------------
+  # RDS Dedicados por serviço/domínio
+  # ---------------------------------------------------------------------------
+  - name: monolithic
+    engine: postgres
+    engine_version: "14.22"
+    instance_class: db.t4g.small
+    db_name: monolithic_qa
+    secret: qa/rds/admin/monolithic
+    clone_strategy: CREATE_DATABASE_TEMPLATE
+    notes: "Banco do monolito principal da Youse"
+
+  - name: pricing-engine
+    engine: postgres
+    engine_version: "14.22"
+    instance_class: db.t4g.small
+    db_name: pricing_qa
+    secret: qa/rds/admin/pricing-engine
+    clone_strategy: CREATE_DATABASE_TEMPLATE
+    notes: "Motor de precificação — domínio product-operationalization"
+
+  - name: crivo
+    engine: postgres
+    engine_version: "14.x"    # verificar — secret encontrado mas versão não auditada
+    db_name: crivo_qa
+    secret: qa/rds/admin/crivo
+    clone_strategy: CREATE_DATABASE_TEMPLATE
+
+  - name: guidewire
+    engine: postgres
+    engine_version: "14.x"    # verificar
+    db_name: guidewire_qa
+    secret: qa/rds/admin/guidewire
+    clone_strategy: CREATE_DATABASE_TEMPLATE
+    notes: "Sistema de apólices — verificar se tem restrição de clone"
+
+# ---------------------------------------------------------------------------
+# Configurações de rede QA (para acesso direto ao RDS)
+# ---------------------------------------------------------------------------
+network:
+  vpc_cidr_qa: "10.196.0.0/16"       # vpc-eks-qa
+  vpc_cidr_stage: "10.210.0.0/16"    # vpc-eks-stage
+  vpc_cidr_core: "10.130.0.0/23"     # vpc-core-private
+  vpn_globalprotect: "10.249.0.0/22" # acesso local via VPN
+
+# ---------------------------------------------------------------------------
+# Estratégias de clone por caso de uso
+# ---------------------------------------------------------------------------
+clone_strategies:
+
+  branch_preview:
+    # Para clone de banco por branch do dev (POC atual)
+    strategy: CREATE_DATABASE_TEMPLATE
+    speed: "< 5 segundos"
+    cost: "zero (mesmo RDS)"
+    limitation: "Requer 0 conexões ativas no template durante o clone"
+    command: |
+      CREATE DATABASE "preview_<nome>" TEMPLATE "<db_name_qa>";
+
+  automation_ephemeral:
+    # Para suites E2E que precisam de isolamento total
+    strategy: RDS_SNAPSHOT_RESTORE
+    speed: "10-20 minutos"
+    cost: "~$0.05/h (db.t4g.small)"
+    when: "Quando CREATE TEMPLATE não é suficiente (banco muito grande ou multi-DB)"
+    command: |
+      aws rds restore-db-instance-from-db-snapshot \
+        --db-instance-identifier preview-<nome> \
+        --db-snapshot-identifier rds:<rds-name>-<data> \
+        --db-instance-class db.t4g.small
+
+  future_neon:
+    # Opção futura se migrarem para Neon (PostgreSQL serverless)
+    strategy: NEON_BRANCH
+    speed: "instantâneo (copy-on-write)"
+    cost: "cobra só pelo delta de writes"
+    notes: "Mesma filosofia do modelo Git branch. Ideal para este projeto."
+    command: |
+      neon branch create --name preview/<branch> --parent qa

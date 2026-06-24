@@ -1,0 +1,30 @@
+# =============================================================================
+# docker-compose.local-test.yml
+#
+# POC LOCAL — sobe um PostgreSQL simulando o RDS de QA da Youse.
+# Carrega o seed automaticamente no primeiro start.
+#
+# Uso:
+#   docker compose -f docker-compose.local-test.yml up -d
+#   ./test-clone-local.sh
+#   docker compose -f docker-compose.local-test.yml down -v
+# =============================================================================
+
+services:
+  postgres-qa-simulado:
+    image: postgres:14-alpine    # Mesma major version do monolithic QA real (14.22)
+    container_name: poc-qa-simulado
+    environment:
+      POSTGRES_USER: youse
+      POSTGRES_PASSWORD: poc_local_only
+      POSTGRES_DB: postgres       # banco "system" — seed cria monolithic_qa
+    ports:
+      - "5433:5432"               # 5433 para nao conflitar com Postgres local
+    volumes:
+      # Seed roda automaticamente na primeira inicializacao
+      - ./seed-qa-simulado.sql:/docker-entrypoint-initdb.d/00-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U youse -d monolithic_qa"]
+      interval: 2s
+      timeout: 3s
+      retries: 20

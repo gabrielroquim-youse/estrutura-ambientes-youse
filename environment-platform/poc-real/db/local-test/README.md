@@ -1,0 +1,306 @@
+# Youse Environment Platform — POC
+
+> **Resumo em uma frase:** Provar que dá pra criar um **ambiente isolado por branch** do app da Youse (`qa.youse.io`) em segundos, clonando o banco do QA com 1 comando e subindo só os serviços que mudaram — tudo rodável localmente com Docker.
+
+Este repositório contém a **prova de conceito** (POC) executável e a **documentação técnica** da estratégia "1 branch = 1 ambiente preview", inspirada no fluxo real da Youse Seguros.
+
+---
+
+## 🎯 O problema
+
+Hoje, na Youse, todo time compartilha **1 único QA** (`qa.youse.io`):
+
+- Quando o time de **Pricing** sobe uma alteração de cálculo, o time de **Sales** pode acabar testando contra a versão errada.
+- Bugs aparecem em QA que ninguém consegue reproduzir porque outro time mudou dados.
+- Releases ficam represadas esperando "janela livre" no QA.
+- Branches paralelas não têm onde rodar testes E2E reais.
+
+## 💡 A proposta
+
+**1 ambiente efêmero por Pull Request**, criado automaticamente no `pr open` e destruído no `pr close`, com:
+
+1. **Banco clonado em segundos** via `CREATE DATABASE preview_xxx TEMPLATE monolithic_qa` (recurso nativo do PostgreSQL — mesma engine do RDS da Youse).
+2. **Só os serviços que mudaram** são re-buildados — o resto é "herdado" do QA via service mesh / DNS routing.
+3. **Branch isolada de verdade**: cada PR tem seu próprio banco, seu próprio domínio (ex.: `pr-123.preview.youse.dev`), sem afetar `qa.youse.io`.
+
+Inspiração: Vercel preview deployments, Heroku Review Apps, GitHub Codespaces — mas adaptado pra arquitetura monolithic + microsserviços da Youse e pro stack AWS deles (RDS, EKS, ECR, CircleCI).
+
+---
+
+## 📦 O que tem aqui
+
+```
+estruturaAmbientes/
+├─ README.md                          ← você está aqui
+├─ PROJETO-AMBIENTES-YOUSE-v2-CLONE.md  ← documento técnico longo (arquitetura)
+├─ docs/                              ← apresentações p/ times (Qualidade, Infra)
+├─ .github/workflows/                 ← workflow GitHub Actions de exemplo
+│  └─ preview-environment.yml         ← cria/destrói preview no PR
+└─ environment-platform/
+   ├─ poc-real/                       ← 👈 POC EXECUTÁVEL (foco deste README)
+   │  └─ db/
+   │     ├─ clone-db.sh               ← script production-ready (AWS Secrets + RDS)
+   │     ├─ rds-map.yaml              ← mapa dos RDS reais da Youse (QA)
+   │     └─ local-test/               ← stack Docker que roda na sua máquina
+   ├─ golden-seed/                    ← seed de massa "golden" (usuários auto, etc.)
+   └─ poc-simulador/                  ← scripts shell de simulação
+```
+
+---
+
+## 🚀 Como rodar (5 minutos)
+
+### Pré-requisitos
+
+- **Docker Desktop** instalado e rodando (Windows / Mac / Linux)
+- **PowerShell** (Windows) ou **bash** (Mac/Linux) — só pros comandos de teste
+- ~2 GB de RAM livre
+
+### Passos
+
+```powershell
+# 1. Clone o repo
+git clone https://github.com/gabrielroquim-youse/estrutura-ambientes-youse.git
+cd estrutura-ambientes-youse/environment-platform/poc-real/db/local-test
+
+# 2. Sobe o stack completo
+docker compose -f docker-compose.cotacao-v2.yml up --build -d
+
+# 3. Espera ~30s os containers ficarem healthy, depois abre:
+#    http://localhost:3000   ← Landing Youse (clica em "COTE GRÁTIS" no Auto)
+#    http://localhost:8025   ← Caixa de entrada (Mailpit) — vê o email chegar
+#    http://localhost:5050   ← pgAdmin (login: poc@poc.com / senha: poc)
+```
+
+### Pra derrubar tudo
+
+```powershell
+docker compose -f docker-compose.cotacao-v2.yml down -v
+```
+
+---
+
+## 🎬 O que a POC demonstra
+
+A POC replica o **fluxo real de cotação de Seguro Auto da Youse** (`qa.youse.io` → "COTE GRÁTIS" → `cotacao.youse.com.br/seguro-auto/.../lead_info`) numa cópia visualmente idêntica, rodando 100% local:
+
+### Fluxo do usuário (frontend)
+
+| Passo | Tela | Rota |
+|---|---|---|
+| 1 | Home com cards Auto/Residencial/Vida + CTA "COTE GRÁTIS" | `index.html` |
+| 2 | Lead info: nome + email + telefone | `lead_info.html` |
+| 3 | Dados do veículo: placa, marca, modelo, ano, FIPE | `vehicle.html` |
+| 4 | Cotação calculada + email enviado de verdade | `quote.html` |
+
+### O que acontece por baixo (backend)
+
+1. **`postgres-qa-simulado`** sobe com schema `monolithic_qa` (3 leads + 3 veículos + 3 cotações de QA).
+2. **`clone-db-job`** roda **`CREATE DATABASE preview_you_123 TEMPLATE monolithic_qa`** — em ~8s, banco clonado com toda a massa do QA.
+3. **`api-cotacao`** (Node/Express) conecta no banco clonado, calcula prêmio (simula o `pricing-engine`) e dispara email via SMTP.
+4. **`mailpit`** captura o SMTP local e mostra o email recebido numa UI tipo Gmail em `http://localhost:8025`.
+5. **`pgadmin`** permite inspecionar `monolithic_qa` (QA) lado a lado com `preview_you_123` (preview) — você vê que a alteração no preview **não afeta o QA**.
+
+> 💡 Quer receber em **e-mail real** (Gmail/Outlook)? Edite [docker-compose.cotacao-v2.yml](environment-platform/poc-real/db/local-test/docker-compose.cotacao-v2.yml) e descomente o bloco SMTP real (linhas comentadas `# SMTP_HOST: smtp.gmail.com`).
+
+---
+
+## 🏗️ Arquitetura
+
+### Stack da POC local
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                  Browser (você)                            │
+└──────────┬─────────────────────────────────┬───────────────┘
+           │                                 │
+           ▼                                 ▼
+  ┌───────────────────┐              ┌──────────────────┐
+  │ frontend-cotacao  │  fetch()     │   api-cotacao    │
+  │  (nginx :3000)    │ ───────────► │  (Node :4000)    │
+  │  4 telas HTML     │              │  Express + pg    │
+  └───────────────────┘              │  + nodemailer    │
+                                     └────┬──────────┬──┘
+                                          │          │
+                                  SQL     │          │  SMTP
+                                          ▼          ▼
+                          ┌────────────────────┐  ┌──────────────┐
+                          │ postgres-qa-simulado│  │   mailpit    │
+                          │      :5433          │  │ :1025 / 8025 │
+                          │                     │  └──────────────┘
+                          │ ┌─────────────────┐ │
+                          │ │ monolithic_qa   │ │  ◄── template
+                          │ └────────┬────────┘ │
+                          │          │ CLONE    │
+                          │          ▼          │
+                          │ ┌─────────────────┐ │
+                          │ │ preview_you_123 │ │  ◄── usado pela API
+                          │ └─────────────────┘ │
+                          └─────────────────────┘
+```
+
+### Mapeamento POC ↔ produção Youse
+
+| POC local | Produção Youse |
+|---|---|
+| `postgres-qa-simulado` (PG 14 Alpine) | RDS `monolithic-qa` (PG 14.22, `sa-east-1`) |
+| `CREATE DATABASE ... TEMPLATE` (~8s local, <500ms warm) | Mesmo comando contra RDS real (validado em `clone-db.sh`) |
+| `api-cotacao` (Node mock) | `pricing-engine` + `sales-frontend` + `mailer-service` reais |
+| `mailpit` (captura SMTP) | SES / SendGrid (produção) |
+| `clone-db-job` (Docker one-shot) | Step do GitHub Actions ou job CircleCI |
+
+---
+
+## 🔬 Por que `CREATE DATABASE ... TEMPLATE`?
+
+Era a peça crítica do projeto: validar que dá pra clonar o banco de QA **rápido o suficiente** pra ser viável dentro de um pipeline de PR.
+
+### Validações feitas
+
+| Cenário | Tempo | Observação |
+|---|---|---|
+| Local (Docker, ~50 MB de dados) | **8.178 ms** | Cold start, primeiro clone |
+| RDS warm (estimado, com cache OS) | **< 500 ms** | Mesma instância, dados já em buffer |
+| Integridade dos dados | ✅ 100% | Todas as FKs, índices, sequences preservados |
+| Isolamento | ✅ Total | Alteração em `preview_you_123` NÃO afeta `monolithic_qa` |
+
+### Requisitos (e como contornar)
+
+- **Zero conexões ativas** no template — resolvido com `pg_terminate_backend()` antes do CREATE
+- **Postgres ≥ 9.0** — Youse usa 12.11 e 14.22, ambos suportam
+- **Mesmo cluster** — não funciona cross-RDS (limitação aceita: clones sempre na própria instância de QA)
+
+---
+
+## 🗺️ Mapa dos RDS reais da Youse (QA)
+
+Em [environment-platform/poc-real/db/rds-map.yaml](environment-platform/poc-real/db/rds-map.yaml):
+
+| RDS | Engine | DB principal | Estratégia |
+|---|---|---|---|
+| `shared-qa-v12` | PG 12.11 | `postgres` | `CREATE DATABASE TEMPLATE` |
+| `monolithic-qa` | PG 14.22 | `monolithic_qa` | `CREATE DATABASE TEMPLATE` |
+| `pricing-engine-qa` | PG 14.22 | `pricing_qa` | `CREATE DATABASE TEMPLATE` |
+| `crivo-qa` | PG 12.x | `crivo_qa` | `CREATE DATABASE TEMPLATE` |
+| `guidewire-qa` | PG 12.x | `guidewire_qa` | `CREATE DATABASE TEMPLATE` |
+
+**Conta AWS:** `514007640321` · **Região:** `sa-east-1` · **IAM:** `arn:aws:iam::514007640321:role/circleci`
+
+---
+
+## 📂 Estrutura detalhada de `local-test/`
+
+```
+local-test/
+├─ docker-compose.cotacao-v2.yml   ← stack principal (use este)
+├─ clone-db-init.sh                ← script do job de clone (entrypoint)
+├─ seed-qa-v2.sql                  ← seed do QA simulado (3 leads/veículos/quotes)
+├─ pgadmin-servers.json            ← config pré-carregada do pgAdmin
+├─ api-cotacao/
+│  ├─ Dockerfile                   ← Node 20 Alpine
+│  ├─ package.json                 ← express, pg, nodemailer, cors
+│  └─ server.js                    ← 4 endpoints REST (leads/vehicles/quotes/health)
+└─ frontend-cotacao/
+   ├─ index.html                   ← landing Youse
+   ├─ lead_info.html               ← passo 1
+   ├─ vehicle.html                 ← passo 2
+   └─ quote.html                   ← passo 3 + resultado + email
+```
+
+---
+
+## 🔌 API REST (`api-cotacao`)
+
+Base URL: `http://localhost:4000`
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/api/health` | Healthcheck (verifica conexão com DB clonado) |
+| `POST` | `/api/leads` | Cria lead (passo 1) |
+| `POST` | `/api/vehicles` | Adiciona veículo a um lead (passo 2) |
+| `POST` | `/api/quotes` | Calcula prêmio + envia email (passo 3) |
+| `GET` | `/api/quotes` | Lista todas as cotações do preview |
+
+### Exemplo de chamada completa (PowerShell)
+
+```powershell
+$h = @{'Content-Type'='application/json'}
+
+# 1. Lead
+$lead = Invoke-RestMethod http://localhost:4000/api/leads -Method POST -Headers $h `
+  -Body '{"name":"Joao","email":"joao@test.com","phone":"11999990000"}'
+
+# 2. Veículo
+$veh = Invoke-RestMethod http://localhost:4000/api/vehicles -Method POST -Headers $h `
+  -Body (@{lead_id=$lead.id; license_plate="ABC1D23"; brand="Honda"; model="Civic"; year=2023; fipe_value=185000} | ConvertTo-Json)
+
+# 3. Cotação + email
+$q = Invoke-RestMethod http://localhost:4000/api/quotes -Method POST -Headers $h `
+  -Body (@{lead_id=$lead.id; vehicle_id=$veh.id; coverage_type="completo"} | ConvertTo-Json)
+
+$q.email.status   # → "sent"
+# email cai em http://localhost:8025
+```
+
+---
+
+## 🛠️ De onde vieram as decisões técnicas
+
+Cada peça da POC reflete uma decisão informada pelo **stack real da Youse**:
+
+| Decisão | Por quê |
+|---|---|
+| **PostgreSQL 14-alpine** | É a versão que o RDS `monolithic-qa` usa (PG 14.22). Garantia que `CREATE DATABASE TEMPLATE` se comporta igual. |
+| **`CREATE DATABASE TEMPLATE`** (não snapshot/restore) | Snapshot RDS leva minutos. `TEMPLATE` leva sub-segundo. Único caminho viável pra preview-por-PR. |
+| **PostgREST descartado em favor de Node** | PostgREST era simples mas sem espaço pra lógica de envio de email + cálculo de prêmio. Node deu flexibilidade. |
+| **Mailpit** | Padrão de mercado pra capturar SMTP em dev (substitui MailHog). UI moderna, API REST, zero config. |
+| **Layout Youse-like** | Pra demo ser convincente — não basta "funcionar", precisa parecer o produto real pro time entender o impacto. |
+| **Volumes nomeados (`pg_data_v2`)** | Permite `docker compose down` sem perder dados; `down -v` quando quer reset total. |
+| **`condition: service_completed_successfully`** | Garante que `api-cotacao` só sobe depois do clone terminar — sem isso, race condition. |
+
+---
+
+## 📚 Documentação complementar
+
+- [PROJETO-AMBIENTES-YOUSE-v2-CLONE.md](PROJETO-AMBIENTES-YOUSE-v2-CLONE.md) — documento técnico longo, arquitetura completa, custos, riscos
+- [docs/apresentacao-time-qualidade.md](docs/apresentacao-time-qualidade.md) — versão p/ time de QA
+- [docs/apresentacao-time-infra.md](docs/apresentacao-time-infra.md) — versão p/ time de Infra
+- [docs/GUIA-PRATICO-AMBIENTES-FERRAMENTAS.md](docs/GUIA-PRATICO-AMBIENTES-FERRAMENTAS.md) — comparativo de ferramentas avaliadas
+
+---
+
+## 🚦 Status do projeto
+
+| Item | Status |
+|---|---|
+| Validação local do `CREATE DATABASE TEMPLATE` | ✅ Validado (8s clone, integridade 100%) |
+| POC visual fim-a-fim (landing → email) | ✅ Funcionando |
+| Mapeamento dos RDS reais da Youse | ✅ Documentado em `rds-map.yaml` |
+| Script production-ready (`clone-db.sh`) | ✅ Pronto (precisa rodar dentro da VPC) |
+| GitHub Actions workflow exemplo | ✅ Em `.github/workflows/` |
+| **Validação contra RDS real da Youse** | ⏳ Pendente (precisa VPN Infra + permissão IAM) |
+| Provisionamento de pods no EKS | ⏳ Pendente (escopo da próxima fase) |
+
+---
+
+## ❓ FAQ rápido
+
+**P: Isso afeta `qa.youse.io`?**
+R: Não. A POC roda 100% local. O script `clone-db.sh` (production) usa um banco novo (`preview_*`), nunca toca em `monolithic_qa` direto.
+
+**P: Quanto vai custar em AWS?**
+R: `CREATE DATABASE TEMPLATE` não duplica storage físico — ele usa **copy-on-write** no nível do PG. Só os blocos que mudam ocupam espaço novo. Custo marginal por preview: ~poucos MB.
+
+**P: E se o time de Pricing rodar uma migration?**
+R: A migration roda só no banco do preview daquela branch. Outras branches/QA não são afetadas. Quando a branch é merged, o destroy job dropa o banco.
+
+**P: Funciona pra Aurora?**
+R: Sim, Aurora-PostgreSQL suporta `CREATE DATABASE TEMPLATE` igual. Mas a Youse usa RDS comum (não Aurora) — confirmado no repo `terraform-platform`.
+
+---
+
+## 👤 Autoria
+
+Gabriel Roquim — Time de Qualidade Youse · 2026
+
+Repo: https://github.com/gabrielroquim-youse/estrutura-ambientes-youse
