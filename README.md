@@ -267,6 +267,12 @@ R: Sim. O clone do banco é agnóstico. A POC usa Node só pro mock — em produ
 ## 📚 Documentação complementar
 
 - 📘 [PROJETO-AMBIENTES-YOUSE-v2-CLONE.md](PROJETO-AMBIENTES-YOUSE-v2-CLONE.md) — documento técnico longo (arquitetura, custos, riscos)
+- 📊 [docs/INVENTARIO-MICROSSERVICOS-YOUSE.md](docs/INVENTARIO-MICROSSERVICOS-YOUSE.md) — **inventário dos microsserviços reais** da Youse + candidatos a piloto
+- 🎤 [docs/CALL-INFRA-PAUTA.md](docs/CALL-INFRA-PAUTA.md) — pauta pronta pra call com Infra (30 min, 3 decisões)
+- 🧭 ADRs (Architecture Decision Records):
+   - [ADR-001 — Routing preview ↔ QA](docs/ADR-001-routing-preview-qa.md)
+   - [ADR-002 — Estratégia de bancos](docs/ADR-002-estrategia-bancos.md)
+   - [ADR-003 — Isolamento de filas/SQS](docs/ADR-003-isolamento-filas.md)
 - 🎤 [docs/apresentacao-time-qualidade.md](docs/apresentacao-time-qualidade.md) — versão p/ QA
 - 🛠️ [docs/apresentacao-time-infra.md](docs/apresentacao-time-infra.md) — versão p/ Infra
 - 🔧 [docs/GUIA-PRATICO-AMBIENTES-FERRAMENTAS.md](docs/GUIA-PRATICO-AMBIENTES-FERRAMENTAS.md) — comparativo de ferramentas
