@@ -107,6 +107,71 @@ Browser ─► nginx-frontend (portas 3000 / 3001 / 3002)
 | **PR-123** (`feature/YOU-123-nova-cobertura`) | :3001 | `preview_pr123` clonado | **clona tudo** | pr123-pricing + pr123-notification |
 | **PR-456** (`feature/YOU-456-ajuste-fator-idade`) | :3002 | `preview_pr456` clonado | **changed-only** | pr456-pricing + **qa-notification** (herdado) |
 
+---
+
+### 🌐 Guia visual: o que abre em cada URL localhost
+
+Depois de `docker compose ... up -d`, você tem **6 URLs** abertas na sua máquina. Cada uma serve um propósito diferente:
+
+#### 🟦 http://localhost:3000 — QA (baseline)
+
+- **O que é:** A versão "estável" do app — equivalente ao `qa.youse.io` real.
+- **Banco:** `monolithic_qa` (5 leads iniciais).
+- **Banner no topo:** cinza/azul, identifica como "QA".
+- **Comportamento:** quando você cria uma cotação aqui, o `qa-order` chama `qa-pricing` e `qa-notification`. Tudo dentro do "perímetro QA".
+- **Pra que serve:** ponto de referência. Toda alteração feita em PR não deve afetar este ambiente.
+
+#### 🟩 http://localhost:3001 — PR-123 (full preview)
+
+- **O que é:** Preview completo da branch `feature/YOU-123-nova-cobertura`. Simula o cenário **"o time de Pricing E o time de Notificações alteraram algo no mesmo PR"**.
+- **Banco:** `preview_pr123` — **clone independente** do `monolithic_qa` (mesma massa inicial, mas isolado).
+- **Banner no topo:** amarelo/laranja com badge `[PREVIEW]`.
+- **Comportamento:** `pr123-order` chama `pr123-pricing` (próprio) + `pr123-notification` (próprio). Os 3 microservices do PR rodam em containers separados.
+- **Email gerado:** chega no Mailpit com `From: noreply+pr123@preview.youse.test`.
+- **Pra que serve:** mostra o caso "pesado" de preview — quando o PR mexe em vários services, todos sobem juntos.
+
+#### 🟧 http://localhost:3002 — PR-456 (only-changed, com herança)
+
+- **O que é:** Preview da branch `feature/YOU-456-ajuste-fator-idade`, que **só alterou o pricing** (não mexeu em notificação).
+- **Banco:** `preview_pr456` — outro clone independente.
+- **Banner no topo:** roxo/rosa com badge `[PREVIEW – CHANGED ONLY]`.
+- **Comportamento:** `pr456-order` chama `pr456-pricing` (próprio, porque mudou) **MAS** chama `qa-notification` (do QA, porque não mudou). É o padrão **"only-changed-services"** — economia de containers/CPU quando o PR é pequeno.
+- **Email gerado:** chega no Mailpit com `From: noreply+pr-456@preview.youse.test` — mesmo passando pelo `qa-notification`, a identidade do PR é preservada (graças ao `preview_id` enviado no body do request).
+- **Pra que serve:** prova o caso de uso **mais comum** na prática — PRs pequenos não precisam clonar todos os services.
+
+#### 📧 http://localhost:8025 — Mailpit (caixa de e-mails)
+
+- **O que é:** servidor SMTP local que **captura todos os e-mails** que os 3 ambientes mandariam pra fora — substitui o SES/SendGrid em ambiente de teste.
+- **O que você vê:** uma UI tipo Gmail, com todos os e-mails de cotação de QA + PR-123 + PR-456 misturados.
+- **Como diferenciar:** olhe o `From:` — `noreply+qa@` / `noreply+pr123@` / `noreply+pr-456@`. Cada preview assina seus próprios e-mails.
+- **Pra que serve:** valida que cada ambiente envia notificações com identidade própria, mesmo quando compartilha o service de notificação (caso do PR-456).
+
+#### 🚦 http://localhost:8080 — Traefik dashboard
+
+- **O que é:** painel do reverse proxy que faz roteamento por hostname (`qa.localhost`, `pr-123.localhost`, `pr-456.localhost`).
+- **O que você vê:** lista de **routers**, **services** e **middlewares** descobertos automaticamente via labels Docker (sem nenhum arquivo de config manual).
+- **Pra que serve:** demonstra o padrão que vai pra produção — em vez de Traefik, na AWS vira **Istio VirtualService** no EKS, mas o conceito é o mesmo: 1 label no manifest = 1 rota criada.
+
+#### 🗄️ http://localhost:5050 — pgAdmin (inspeção dos bancos)
+
+- **O que é:** UI do PostgreSQL. Login: `poc@poc.com` / senha: `poc`.
+- **Como conectar:** adicione um servidor com host `postgres-qa-simulado`, porta `5432`, user `youse`, senha `youse`.
+- **O que inspecionar:** os **3 bancos lado a lado** (`monolithic_qa`, `preview_pr123`, `preview_pr456`). Rode `SELECT count(*) FROM leads` em cada um — números diferentes = isolamento real.
+- **Pra que serve:** prova visual de que os clones são bancos **independentes**, não schemas/views do mesmo DB.
+
+---
+
+### 🔄 Fluxo end-to-end que você pode reproduzir manualmente
+
+1. Abre http://localhost:3001 (PR-123) → clica em "COTE GRÁTIS Auto"
+2. Preenche lead → veículo → finaliza cotação
+3. Abre http://localhost:8025 (Mailpit) → vê o email com `From: noreply+pr123@`
+4. Abre http://localhost:3002 (PR-456) e faz a mesma coisa
+5. Volta no Mailpit → tem outro email com `From: noreply+pr-456@` (mesmo o service de notificação sendo o `qa-notification`!)
+6. Abre http://localhost:5050 (pgAdmin) → conta leads em cada DB → vê que cresceram **independentemente** em `preview_pr123` e `preview_pr456`, sem tocar no `monolithic_qa`
+
+---
+
 ### Como rodar
 
 ```powershell
