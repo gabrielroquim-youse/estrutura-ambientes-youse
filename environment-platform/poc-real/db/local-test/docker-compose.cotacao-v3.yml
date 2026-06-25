@@ -1,0 +1,299 @@
+# =============================================================================
+# docker-compose.cotacao-v3.yml
+#
+# CENARIO MULTI-PREVIEW (Cenario 3 da POC)
+# Demonstra 3 ambientes rodando SIMULTANEAMENTE e isolados:
+#
+#   QA      = ambiente compartilhado (sempre on)         -> http://localhost:3000
+#   PR-123  = preview que clona TUDO (full-stack)        -> http://localhost:3001
+#   PR-456  = preview que clona SO pricing (changed-only) -> http://localhost:3002
+#
+# Stack compartilhado: postgres, mailpit, pgadmin, traefik
+# Servicos por ambiente: api-pricing + api-order + api-notification + frontend
+#
+# Total: 17 containers
+# =============================================================================
+
+networks:
+  poc-net:
+    name: poc-net
+    driver: bridge
+
+volumes:
+  pg_data_v3:
+
+services:
+  # ===========================================================================
+  # INFRA COMPARTILHADA
+  # ===========================================================================
+
+  postgres-qa-simulado:
+    image: postgres:14-alpine
+    container_name: postgres-qa-simulado
+    environment:
+      POSTGRES_USER: youse
+      POSTGRES_PASSWORD: poc_local_only
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data_v3:/var/lib/postgresql/data
+      - ./seed-qa-v2.sql:/docker-entrypoint-initdb.d/01-seed-qa.sql:ro
+    networks: [poc-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U youse -d monolithic_qa"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mailpit
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # UI
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    networks: [poc-net]
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: poc@poc.com
+      PGADMIN_DEFAULT_PASSWORD: poc
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "5050:80"
+    networks: [poc-net]
+
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    command:
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=poc-net
+      - --entrypoints.web.address=:80
+    ports:
+      - "80:80"      # roteamento por Host (qa.localhost, pr-123.localhost, pr-456.localhost)
+      - "8080:8080"  # dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [poc-net]
+
+  # ===========================================================================
+  # AMBIENTE: QA (compartilhado, sempre on)
+  # ===========================================================================
+
+  qa-pricing:
+    build: ./api-pricing
+    container_name: qa-pricing
+    environment:
+      PREVIEW_ID: qa
+      BRANCH_NAME: main
+      SERVICE_NAME: pricing-engine
+    networks: [poc-net]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.qa-pricing.rule=Host(`qa.localhost`) && PathPrefix(`/price`)"
+      - "traefik.http.services.qa-pricing.loadbalancer.server.port=4000"
+
+  qa-notification:
+    build: ./api-notification
+    container_name: qa-notification
+    environment:
+      PREVIEW_ID: qa
+      BRANCH_NAME: main
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_FROM: "Youse QA <noreply+qa@qa.youse.test>"
+    depends_on: [mailpit]
+    networks: [poc-net]
+
+  qa-order:
+    build: ./api-order
+    container_name: qa-order
+    environment:
+      PREVIEW_ID: qa
+      BRANCH_NAME: main
+      DB_HOST: postgres-qa-simulado
+      DB_NAME: monolithic_qa
+      DB_USER: youse
+      DB_PASSWORD: poc_local_only
+      PRICING_URL: http://qa-pricing:4000
+      NOTIFICATION_URL: http://qa-notification:4000
+      CHANGED_SERVICES: ""
+    depends_on:
+      postgres-qa-simulado:
+        condition: service_healthy
+      qa-pricing: { condition: service_started }
+      qa-notification: { condition: service_started }
+    networks: [poc-net]
+
+  qa-frontend:
+    build: ./frontend-v3
+    container_name: qa-frontend
+    environment:
+      PREVIEW_ID: qa
+      BRANCH_NAME: main
+      ORDER_SERVICE_HOST: qa-order:4000
+    ports:
+      - "3000:80"
+    depends_on: [qa-order]
+    networks: [poc-net]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.qa-front.rule=Host(`qa.localhost`)"
+      - "traefik.http.services.qa-front.loadbalancer.server.port=80"
+
+  # ===========================================================================
+  # AMBIENTE: PR-123 (clona TUDO — full-stack preview)
+  # ===========================================================================
+
+  pr123-clone-db:
+    image: postgres:14-alpine
+    container_name: pr123-clone-db
+    environment:
+      PG_HOST: postgres-qa-simulado
+      PG_USER: youse
+      PGPASSWORD: poc_local_only
+      PG_TEMPLATE: monolithic_qa
+      PG_PREVIEW: preview_pr123
+    volumes:
+      - ./clone-db-init.sh:/clone-db-init.sh:ro
+    entrypoint: ["sh", "/clone-db-init.sh"]
+    depends_on:
+      postgres-qa-simulado:
+        condition: service_healthy
+    networks: [poc-net]
+    restart: "no"
+
+  pr123-pricing:
+    build: ./api-pricing
+    container_name: pr123-pricing
+    environment:
+      PREVIEW_ID: pr-123
+      BRANCH_NAME: feature/YOU-123-nova-cobertura
+      SERVICE_NAME: pricing-engine
+    networks: [poc-net]
+
+  pr123-notification:
+    build: ./api-notification
+    container_name: pr123-notification
+    environment:
+      PREVIEW_ID: pr-123
+      BRANCH_NAME: feature/YOU-123-nova-cobertura
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_FROM: "Youse Preview PR-123 <noreply+pr123@preview.youse.test>"
+    depends_on: [mailpit]
+    networks: [poc-net]
+
+  pr123-order:
+    build: ./api-order
+    container_name: pr123-order
+    environment:
+      PREVIEW_ID: pr-123
+      BRANCH_NAME: feature/YOU-123-nova-cobertura
+      DB_HOST: postgres-qa-simulado
+      DB_NAME: preview_pr123
+      DB_USER: youse
+      DB_PASSWORD: poc_local_only
+      PRICING_URL: http://pr123-pricing:4000
+      NOTIFICATION_URL: http://pr123-notification:4000
+      CHANGED_SERVICES: "pricing-engine,order-service,notification-service"
+    depends_on:
+      pr123-clone-db: { condition: service_completed_successfully }
+      pr123-pricing: { condition: service_started }
+      pr123-notification: { condition: service_started }
+    networks: [poc-net]
+
+  pr123-frontend:
+    build: ./frontend-v3
+    container_name: pr123-frontend
+    environment:
+      PREVIEW_ID: pr-123
+      BRANCH_NAME: feature/YOU-123-nova-cobertura
+      ORDER_SERVICE_HOST: pr123-order:4000
+    ports:
+      - "3001:80"
+    depends_on: [pr123-order]
+    networks: [poc-net]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pr123-front.rule=Host(`pr-123.localhost`)"
+      - "traefik.http.services.pr123-front.loadbalancer.server.port=80"
+
+  # ===========================================================================
+  # AMBIENTE: PR-456 (clona SO pricing-engine — "only changed services")
+  # order-service e notification-service apontam pros do QA (herdados)
+  # ===========================================================================
+
+  pr456-clone-db:
+    image: postgres:14-alpine
+    container_name: pr456-clone-db
+    environment:
+      PG_HOST: postgres-qa-simulado
+      PG_USER: youse
+      PGPASSWORD: poc_local_only
+      PG_TEMPLATE: monolithic_qa
+      PG_PREVIEW: preview_pr456
+    volumes:
+      - ./clone-db-init.sh:/clone-db-init.sh:ro
+    entrypoint: ["sh", "/clone-db-init.sh"]
+    depends_on:
+      postgres-qa-simulado:
+        condition: service_healthy
+    networks: [poc-net]
+    restart: "no"
+
+  pr456-pricing:
+    build: ./api-pricing
+    container_name: pr456-pricing
+    environment:
+      PREVIEW_ID: pr-456
+      BRANCH_NAME: feature/YOU-456-ajuste-fator-idade
+      SERVICE_NAME: pricing-engine
+    networks: [poc-net]
+
+  # PR-456 NAO tem notification proprio — usa o do QA (compartilhado)
+  # PR-456 TEM order proprio (precisa pra apontar pro DB clonado preview_pr456)
+
+  pr456-order:
+    build: ./api-order
+    container_name: pr456-order
+    environment:
+      PREVIEW_ID: pr-456
+      BRANCH_NAME: feature/YOU-456-ajuste-fator-idade
+      DB_HOST: postgres-qa-simulado
+      DB_NAME: preview_pr456
+      DB_USER: youse
+      DB_PASSWORD: poc_local_only
+      PRICING_URL: http://pr456-pricing:4000             # preview
+      NOTIFICATION_URL: http://qa-notification:4000      # herdado do QA
+      CHANGED_SERVICES: "pricing-engine"
+    depends_on:
+      pr456-clone-db: { condition: service_completed_successfully }
+      pr456-pricing: { condition: service_started }
+      qa-notification: { condition: service_started }
+    networks: [poc-net]
+
+  pr456-frontend:
+    build: ./frontend-v3
+    container_name: pr456-frontend
+    environment:
+      PREVIEW_ID: pr-456
+      BRANCH_NAME: feature/YOU-456-ajuste-fator-idade
+      ORDER_SERVICE_HOST: pr456-order:4000
+    ports:
+      - "3002:80"
+    depends_on: [pr456-order]
+    networks: [poc-net]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pr456-front.rule=Host(`pr-456.localhost`)"
+      - "traefik.http.services.pr456-front.loadbalancer.server.port=80"

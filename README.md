@@ -72,7 +72,42 @@ docker compose -f docker-compose.cotacao-v2.yml down -v
 
 ---
 
-## 🎬 O que a POC demonstra
+## � Cenário 3 — multi-preview simultâneo (POC v3)
+
+A v2 mostra **1 preview** com 1 serviço. A **v3** vai além: roda **3 ambientes em paralelo** (QA + 2 PRs) com microsserviços isolados, provando localmente que a estratégia funciona pra time inteiro:
+
+| Ambiente | Porta | DB | pricing-engine | order-service | notification-service |
+|---|---|---|---|---|---|
+| **QA** (compartilhado) | 3000 | `monolithic_qa` | qa-pricing | qa-order | qa-notification |
+| **PR-123** (full preview) | 3001 | `preview_pr123` (clonado) | pr123-pricing | pr123-order | pr123-notification |
+| **PR-456** (changed-only) | 3002 | `preview_pr456` (clonado) | pr456-pricing | pr456-order | **↳ herda qa-notification** |
+
+```powershell
+cd environment-platform/poc-real/db/local-test
+docker compose -f docker-compose.cotacao-v3.yml up --build -d
+# valida end-to-end:
+powershell -File .\test-v3.ps1
+```
+
+| URL | O que mostra |
+|---|---|
+| http://localhost:3000 / 3001 / 3002 | Frontends dos 3 ambientes, com banner colorido por preview |
+| http://localhost:8025 | Caixa Mailpit — emails do PR-123 (`noreply+pr123@`) e do PR-456 (`noreply+pr-456@`) chegam separados |
+| http://localhost:8080 | Dashboard Traefik (auto-discovery via labels) |
+| http://localhost:5050 | pgAdmin — 3 DBs lado a lado (monolithic_qa, preview_pr123, preview_pr456) |
+
+**O que isso prova:**
+- ✅ **Clone paralelo** de 2 bancos a partir do mesmo template, sem locks
+- ✅ **Isolamento de dados** — dados do PR-123 não aparecem no PR-456 nem no QA
+- ✅ **Service mesh DNS-only** — order-service do PR-456 chama `pricing-engine` próprio mas `notification-service` do QA via env var (modelo "only-changed-services" do [ADR-002](docs/ADR-002-estrategia-bancos.md))
+- ✅ **Identidade preservada** — email enviado via QA-notification sai com `From: noreply+pr-456@preview.youse.test` (preview_id passa no body do request)
+- ✅ **Traefik labels** roteiam por Host header (`pr-123.localhost`, `pr-456.localhost`) — mesmo padrão de service mesh do EKS
+
+Stack v3 = 15 containers. Sobe em ~60s no Docker Desktop.
+
+---
+
+## �🎬 O que a POC demonstra
 
 A POC replica o **fluxo real de Seguro Auto da Youse** (`qa.youse.io` → "COTE GRÁTIS" → `cotacao.youse.com.br/seguro-auto/.../lead_info`) numa cópia visualmente próxima, rodando 100% local com Docker.
 

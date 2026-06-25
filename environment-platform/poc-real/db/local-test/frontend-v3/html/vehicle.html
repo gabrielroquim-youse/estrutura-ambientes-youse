@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seu veículo · Youse</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; background: #fafafa; min-height: 100vh; }
+.preview-banner { color: #fff; padding: 10px 24px; font-size: 13px; text-align: center; }
+.preview-banner.qa { background: linear-gradient(90deg, #10b981, #059669); }
+.preview-banner.preview { background: linear-gradient(90deg, #ff6b35, #f7931e); }
+.preview-banner code { background: rgba(0,0,0,0.25); padding: 2px 8px; border-radius: 3px; }
+
+header { padding: 20px 48px; background: #fff; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 24px; }
+.logo { font-size: 26px; font-weight: 800; letter-spacing: -1px; }
+.logo .se { color: #ff6b35; }
+.steps { display: flex; gap: 8px; font-size: 13px; color: #9ca3af; margin-left: auto; }
+.steps .step { padding: 4px 12px; border-radius: 12px; background: #f3f4f6; }
+.steps .step.active { background: #ff6b35; color: #fff; font-weight: 600; }
+.steps .step.done { background: #10b981; color: #fff; }
+
+.container { max-width: 640px; margin: 40px auto; padding: 0 24px; }
+.greeting { text-align: center; color: #6b7280; font-size: 15px; margin-bottom: 16px; }
+.greeting strong { color: #1a1a2e; }
+.card-form { background: #fff; border-radius: 16px; padding: 40px 36px; box-shadow: 0 4px 24px rgba(0,0,0,0.04); border: 1px solid #f0f0f0; }
+.intro { text-align: center; margin-bottom: 28px; }
+.intro .icon { width: 64px; height: 64px; background: #fff5ed; border-radius: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 16px; }
+.intro h1 { font-size: 26px; letter-spacing: -0.5px; }
+.intro p { color: #6b7280; font-size: 14px; margin-top: 6px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.field { margin-bottom: 18px; }
+.field label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.field input, .field select { width: 100%; padding: 12px 14px; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 15px; font-family: inherit; background: #fff; }
+.field input:focus, .field select:focus { outline: none; border-color: #ff6b35; }
+.field input.plate { text-transform: uppercase; letter-spacing: 2px; font-weight: 600; }
+button[type=submit] { width: 100%; background: #ff6b35; color: #fff; padding: 16px; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+button[type=submit]:hover:not(:disabled) { background: #e85d2e; }
+button[type=submit]:disabled { background: #d1d5db; cursor: not-allowed; }
+.back { display: inline-block; margin-top: 16px; font-size: 13px; color: #6b7280; }
+.back-wrap { text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="preview-banner" id="banner">carregando...</div>
+
+<header>
+    <a href="index.html" style="text-decoration:none;color:inherit" class="logo">you<span class="se">se</span></a>
+    <div class="steps">
+        <div class="step done">✓ Você</div>
+        <div class="step active">2. Veículo</div>
+        <div class="step">3. Cotação</div>
+    </div>
+</header>
+
+<div class="container">
+    <div class="greeting">Oi, <strong id="userName">...</strong>! Agora me conta do seu carro:</div>
+    <div class="card-form">
+        <div class="intro">
+            <div class="icon">🚗</div>
+            <h1>Sobre o veículo</h1>
+            <p>A gente consulta a tabela FIPE pra calcular o melhor preço.</p>
+        </div>
+
+        <form id="vehicleForm">
+            <div class="field"><label>Placa</label><input type="text" class="plate" id="plate" placeholder="ABC1D23" maxlength="7" required></div>
+            <div class="row">
+                <div class="field"><label>Marca</label><input type="text" id="brand" placeholder="Volkswagen" required></div>
+                <div class="field"><label>Modelo</label><input type="text" id="model" placeholder="Gol 1.0" required></div>
+            </div>
+            <div class="row">
+                <div class="field"><label>Ano</label><select id="year" required><option value="">selecione</option></select></div>
+                <div class="field"><label>Valor FIPE (R$)</label><input type="number" id="fipe" placeholder="65000" min="5000" step="100" required></div>
+            </div>
+            <button type="submit" id="submitBtn">CONTINUAR →</button>
+        </form>
+        <div class="back-wrap"><a href="lead_info.html" class="back">← voltar</a></div>
+    </div>
+</div>
+
+<script src="preview-banner.js"></script>
+<script>
+preview.load().then(info => {
+    const isQa = info.preview_id === 'qa';
+    const b = document.getElementById('banner');
+    b.className = 'preview-banner ' + (isQa ? 'qa' : 'preview');
+    b.innerHTML = isQa
+        ? '🟢 QA · veiculo sera salvo em <code>monolithic_qa</code>'
+        : `🌿 PREVIEW <strong>${info.preview_id}</strong> · veiculo sera salvo em <code>preview_${info.preview_id}</code> (isolado)`;
+});
+
+const lead = JSON.parse(sessionStorage.getItem('lead') || 'null');
+if (!lead) { alert('Sessão expirou.'); window.location.href = 'lead_info.html'; }
+document.getElementById('userName').textContent = (lead?.name || '').split(' ')[0];
+
+const yearSel = document.getElementById('year');
+const cy = new Date().getFullYear();
+for (let y = cy + 1; y >= 2000; y--) { const o = document.createElement('option'); o.value = y; o.textContent = y; yearSel.appendChild(o); }
+
+document.getElementById('plate').addEventListener('input', e => {
+    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7);
+});
+
+document.getElementById('vehicleForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+    try {
+        const r = await fetch('/api/vehicles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                lead_id: lead.id,
+                license_plate: document.getElementById('plate').value,
+                brand: document.getElementById('brand').value.trim(),
+                model: document.getElementById('model').value.trim(),
+                year: parseInt(document.getElementById('year').value),
+                fipe_value: parseFloat(document.getElementById('fipe').value),
+            }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const vehicle = await r.json();
+        sessionStorage.setItem('vehicle', JSON.stringify(vehicle));
+        window.location.href = 'quote.html';
+    } catch (err) {
+        alert('Erro: ' + err.message);
+        btn.disabled = false; btn.textContent = 'CONTINUAR →';
+    }
+});
+</script>
+</body>
+</html>

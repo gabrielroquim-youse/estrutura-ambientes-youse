@@ -1,0 +1,28 @@
+# Template processado pela imagem nginx:alpine via envsubst no boot
+# Variaveis disponiveis: ${PREVIEW_ID}, ${ORDER_SERVICE_HOST}, ${BRANCH_NAME}
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Endpoint que devolve metadata do preview (consumido pelo front pra montar banner)
+    location = /preview.json {
+        default_type application/json;
+        return 200 '{"preview_id":"${PREVIEW_ID}","branch":"${BRANCH_NAME}","order_service":"${ORDER_SERVICE_HOST}"}';
+    }
+
+    # Proxy pro order-service (BFF) do MESMO preview
+    location /api/ {
+        proxy_pass http://${ORDER_SERVICE_HOST}/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Preview-Id ${PREVIEW_ID};
+        proxy_http_version 1.1;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

@@ -1,0 +1,23 @@
+# =============================================================================
+# Traefik dinamico — labels nos services do docker-compose v3
+#
+# Este arquivo eh referenciado por traefik.yml e habilita auto-discovery
+# via labels em cada container.
+# =============================================================================
+api:
+  dashboard: true
+  insecure: true   # libera dashboard em :8080 sem auth (so para POC local)
+
+entryPoints:
+  web:
+    address: ":80"
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: poc-net
+
+log:
+  level: INFO
+
+accessLog: {}

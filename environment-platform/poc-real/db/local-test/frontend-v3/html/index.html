@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Youse Seguros · Tipo você</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; background: #fff; -webkit-font-smoothing: antialiased; }
+a { text-decoration: none; color: inherit; }
+
+.preview-banner {
+    color: #fff; padding: 10px 24px; font-size: 13px;
+    display: flex; justify-content: space-between; align-items: center; gap: 16px;
+}
+.preview-banner.qa { background: linear-gradient(90deg, #10b981, #059669); }
+.preview-banner.preview { background: linear-gradient(90deg, #ff6b35, #f7931e); }
+.preview-banner code { background: rgba(0,0,0,0.25); padding: 2px 8px; border-radius: 3px; font-family: 'Monaco', monospace; }
+.preview-banner a { text-decoration: underline; font-weight: 600; }
+
+header { padding: 20px 48px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f0f0f0; }
+.logo { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+.logo .se { color: #ff6b35; }
+nav { display: flex; gap: 28px; font-size: 14px; font-weight: 500; }
+nav a:hover { color: #ff6b35; }
+
+.hero { padding: 80px 48px 60px; text-align: center; background: linear-gradient(180deg, #fff 0%, #fafafa 100%); }
+.hero .tag { color: #ff6b35; font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 1.5px; }
+.hero h1 { font-size: 52px; line-height: 1.1; margin: 16px 0 20px; letter-spacing: -1.5px; max-width: 800px; margin-left: auto; margin-right: auto; }
+.hero h1 .highlight { color: #ff6b35; }
+.hero p { color: #6b7280; font-size: 18px; max-width: 600px; margin: 0 auto 32px; line-height: 1.6; }
+.trust { display: inline-flex; align-items: center; gap: 8px; background: #fff5ed; padding: 8px 16px; border-radius: 24px; font-size: 13px; color: #c2410c; font-weight: 600; }
+
+.products { padding: 60px 48px 80px; max-width: 1200px; margin: 0 auto; }
+.products h2 { font-size: 32px; text-align: center; margin-bottom: 12px; letter-spacing: -0.5px; }
+.products .sub { text-align: center; color: #6b7280; margin-bottom: 48px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+.card { border: 1px solid #f0f0f0; border-radius: 16px; padding: 32px 28px; transition: all 0.2s; background: #fff; position: relative; overflow: hidden; }
+.card:hover { border-color: #ff6b35; box-shadow: 0 8px 24px rgba(255, 107, 53, 0.12); transform: translateY(-2px); }
+.card .icon { width: 56px; height: 56px; background: #fff5ed; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 28px; margin-bottom: 20px; }
+.card h3 { font-size: 22px; margin-bottom: 8px; }
+.card .price { color: #ff6b35; font-weight: 700; font-size: 15px; margin-bottom: 12px; }
+.card .desc { color: #6b7280; font-size: 14px; line-height: 1.5; margin-bottom: 24px; min-height: 42px; }
+.card .cta { display: inline-block; background: #ff6b35; color: #fff; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; border: none; }
+.card .cta:hover { background: #e85d2e; }
+.card.disabled .cta { background: #d1d5db; cursor: not-allowed; }
+.card .badge { position: absolute; top: 16px; right: 16px; background: #ff6b35; color: #fff; font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 4px; letter-spacing: 0.5px; }
+
+.features { background: #fafafa; padding: 80px 48px; }
+.features-wrap { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 32px; text-align: center; }
+.feature .icon { font-size: 36px; margin-bottom: 16px; }
+.feature h4 { font-size: 16px; margin-bottom: 8px; }
+.feature p { color: #6b7280; font-size: 14px; line-height: 1.5; }
+
+footer { padding: 40px 48px; border-top: 1px solid #f0f0f0; text-align: center; font-size: 13px; color: #9ca3af; }
+
+.tech-sidebar {
+    position: fixed; bottom: 20px; right: 20px;
+    background: #1a1a2e; color: #e5e7eb;
+    padding: 16px 20px; border-radius: 12px;
+    font-size: 12px; line-height: 1.6; font-family: 'Monaco', monospace;
+    max-width: 320px; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    z-index: 100;
+}
+.tech-sidebar .ts-title { color: #ff6b35; font-weight: 700; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px; }
+.tech-sidebar .ts-line { display: flex; justify-content: space-between; padding: 2px 0; gap: 12px; }
+.tech-sidebar .ok { color: #10b981; }
+.tech-sidebar .skipped { color: #6b7280; }
+.tech-sidebar .preview { color: #ff6b35; }
+
+.preview-switcher { position: fixed; top: 60px; right: 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 16px; font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); z-index: 99; }
+.preview-switcher h5 { font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.preview-switcher a { display: block; padding: 4px 0; color: #1a1a2e; text-decoration: none; }
+.preview-switcher a:hover { color: #ff6b35; }
+.preview-switcher a.current { font-weight: 700; color: #ff6b35; }
+</style>
+</head>
+<body>
+
+<div class="preview-banner" id="banner">
+    <div>⏳ carregando preview...</div>
+</div>
+
+<header>
+    <div class="logo">you<span class="se">se</span></div>
+    <nav>
+        <a href="#">Produtos</a>
+        <a href="#">Sobre</a>
+        <a href="#">Blog</a>
+        <a href="#">Atendimento</a>
+        <a href="#">Login</a>
+    </nav>
+</header>
+
+<section class="hero">
+    <div class="tag">SEGUROS ONLINE</div>
+    <h1>Seguro <span class="highlight">tipo você</span>,<br>do seu jeito, do seu bolso.</h1>
+    <p>Monte seu seguro online em poucos minutos. Sem corretor, sem letras miúdas. Pode confiar, é do time de QA.</p>
+    <div class="trust">✓ Pode confiar, é do time de QA</div>
+</section>
+
+<section class="products">
+    <h2>Escolha seu seguro</h2>
+    <p class="sub">Cotação grátis, em até 2 minutos. Sem compromisso.</p>
+
+    <div class="cards">
+        <div class="card">
+            <div class="badge">MAIS BUSCADO</div>
+            <div class="icon">🚗</div>
+            <h3>Auto</h3>
+            <div class="price">a partir de R$ 45/mês</div>
+            <p class="desc">Cobertura completa, assistência 24h, carro reserva e descontos por bom condutor.</p>
+            <button class="cta" onclick="window.location.href='lead_info.html'">COTE GRÁTIS</button>
+        </div>
+
+        <div class="card disabled">
+            <div class="icon">🏠</div>
+            <h3>Residencial</h3>
+            <div class="price">a partir de R$ 8/mês</div>
+            <p class="desc">Proteção contra incêndio, roubo, danos elétricos e muito mais.</p>
+            <button class="cta">EM BREVE</button>
+        </div>
+
+        <div class="card disabled">
+            <div class="icon">❤️</div>
+            <h3>Vida</h3>
+            <div class="price">a partir de R$ 15/mês</div>
+            <p class="desc">Tranquilidade para sua família. Cobertura por morte, invalidez e doenças graves.</p>
+            <button class="cta">EM BREVE</button>
+        </div>
+    </div>
+</section>
+
+<section class="features">
+    <div class="features-wrap">
+        <div class="feature"><div class="icon">⚡</div><h4>100% online</h4><p>Cote, contrate e gerencie tudo pelo celular ou computador.</p></div>
+        <div class="feature"><div class="icon">💸</div><h4>Sem corretor</h4><p>Sem comissão no meio. Preço mais justo direto pra você.</p></div>
+        <div class="feature"><div class="icon">🛡️</div><h4>Garantia CAIXA</h4><p>Somos do grupo CAIXA Seguradora. Pode confiar.</p></div>
+        <div class="feature"><div class="icon">📱</div><h4>Suporte 24h</h4><p>Atendimento por WhatsApp, chat e telefone, todo dia.</p></div>
+    </div>
+</section>
+
+<footer>© 2026 Youse Seguros · Grupo CAIXA · CNPJ 03.558.096/0001-04</footer>
+
+<div class="preview-switcher" id="switcher" style="display:none">
+    <h5>Trocar de preview</h5>
+    <a href="http://localhost:3000" id="link-qa">QA base (3000)</a>
+    <a href="http://localhost:3001" id="link-pr123">PR-123 (3001)</a>
+    <a href="http://localhost:3002" id="link-pr456">PR-456 (3002)</a>
+    <hr style="margin:8px 0;border:none;border-top:1px solid #f3f4f6">
+    <a href="http://localhost:8025" target="_blank">📬 Caixa de entrada</a>
+    <a href="http://localhost:8080" target="_blank">📊 Traefik dashboard</a>
+    <a href="http://localhost:5050" target="_blank">🗄️ pgAdmin</a>
+</div>
+
+<div class="tech-sidebar" id="sidebar">
+    <div class="ts-title">▼ Preview · carregando...</div>
+</div>
+
+<script src="preview-banner.js"></script>
+<script>
+preview.load().then(info => {
+    const isQa = info.preview_id === 'qa';
+    document.getElementById('banner').className = 'preview-banner ' + (isQa ? 'qa' : 'preview');
+    document.getElementById('banner').innerHTML = isQa
+        ? '<div>🟢 <strong>QA</strong> · ambiente compartilhado · DB <code>monolithic_qa</code></div>'
+        : `<div>🌿 <strong>PREVIEW ${info.preview_id.toUpperCase()}</strong> · branch <code>${info.branch}</code> · DB <code>preview_${info.preview_id}</code> (clonado do QA)</div>`;
+    document.getElementById('banner').innerHTML +=
+        '<a href="http://localhost:8025" target="_blank">📬 Caixa de entrada</a>';
+
+    document.getElementById('sidebar').innerHTML = preview.sidebarHtml(info);
+    document.getElementById('switcher').style.display = 'block';
+    const map = { 'qa': 'link-qa', 'pr-123': 'link-pr123', 'pr-456': 'link-pr456' };
+    if (map[info.preview_id]) document.getElementById(map[info.preview_id])?.classList.add('current');
+});
+</script>
+</body>
+</html>

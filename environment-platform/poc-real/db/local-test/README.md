@@ -80,6 +80,92 @@ docker compose -f docker-compose.cotacao-v2.yml down -v
 
 ---
 
+## 🆕 v3 — Multi-preview simultâneo (3 ambientes em paralelo)
+
+A v2 demonstra **1 preview com 1 API monolítica**. A **v3** quebra a API em 3 microsserviços (`pricing-engine`, `order-service`, `notification-service`) e roda **3 ambientes lado a lado** (QA + 2 PRs), simulando o cenário real Youse com várias squads abrindo PR ao mesmo tempo.
+
+### Arquitetura v3
+
+```
+Browser ─► nginx-frontend (portas 3000 / 3001 / 3002)
+              │
+              │ /api/* (proxy_pass)
+              ▼
+          order-service (BFF)
+              ├── POST /price  ──► pricing-engine (HTTP)
+              └── POST /send   ──► notification-service (HTTP) ──► Mailpit SMTP
+
+  + Traefik (:80 / :8080) com labels Docker pra auto-discovery
+  + PostgreSQL único com 3 DBs: monolithic_qa, preview_pr123, preview_pr456
+```
+
+### Os 3 ambientes
+
+| Ambiente | Front | DB | Estratégia | order chama... |
+|---|---|---|---|---|
+| **QA** | :3000 | `monolithic_qa` | shared baseline | qa-pricing + qa-notification |
+| **PR-123** (`feature/YOU-123-nova-cobertura`) | :3001 | `preview_pr123` clonado | **clona tudo** | pr123-pricing + pr123-notification |
+| **PR-456** (`feature/YOU-456-ajuste-fator-idade`) | :3002 | `preview_pr456` clonado | **changed-only** | pr456-pricing + **qa-notification** (herdado) |
+
+### Como rodar
+
+```powershell
+cd environment-platform/poc-real/db/local-test
+docker compose -f docker-compose.cotacao-v3.yml up --build -d
+
+# Espera ~60s; valida end-to-end:
+powershell -File .\test-v3.ps1
+```
+
+Saída esperada do `test-v3.ps1`:
+
+```
+=== PR-123 (porta 3001) ===
+  quote        : YSE-PR-123-xxxxx -> R$ 561.17/mes
+  pricing      : http://pr123-pricing:4000 [preview]
+  notification : http://pr123-notification:4000 [preview]
+  db usado     : preview_pr123
+
+=== PR-456 (porta 3002) ===
+  quote        : YSE-PR-456-xxxxx -> R$ 500.50/mes
+  pricing      : http://pr456-pricing:4000 [preview]
+  notification : http://qa-notification:4000 [inherited-from-qa]   ◄── chave!
+  db usado     : preview_pr456
+
+=== Mailpit inbox ===
+From: noreply+pr123@preview.youse.test     ← PR-123 via notification próprio
+From: noreply+pr-456@preview.youse.test    ← PR-456 via QA-notification, From dinâmico
+```
+
+### O que cada serviço faz
+
+| Serviço | Endpoint | Função |
+|---|---|---|
+| `api-pricing` | `POST /price` | Stateless. Recebe FIPE+ano+cobertura → devolve `{monthly, annual}` |
+| `api-order` (BFF) | `POST /api/quotes` | Orquestra: cria lead → busca preço → persiste quote → dispara email |
+| `api-notification` | `POST /send` | Envia email via Mailpit. Aceita `preview_id` no body pra setar `From:` dinâmico |
+| `frontend-v3` | nginx + 4 HTMLs | Proxy `/api/*` pro order-service. Busca `/preview.json` pra montar banner |
+| `traefik` | `:80`, `:8080` | Auto-discovery via labels Docker. Roteia por `Host(...)`. |
+
+### O que isso prova (que a v2 não provava)
+
+1. **Clones paralelos seguros** — 2 `CREATE DATABASE TEMPLATE` rodam ao mesmo tempo, completam <10s cada
+2. **Isolamento real entre PRs** — leads do PR-123 vão pro `preview_pr123`; do PR-456 pro `preview_pr456`. Cada DB tem suas próprias linhas; o QA não muda
+3. **Service mesh DNS-only** ([ADR-001](../../../../docs/ADR-001-routing-preview-qa.md)) — o `order-service` decide pra onde chamar usando só env vars (`PRICING_URL`, `NOTIFICATION_URL`). Sem service mesh complexa
+4. **Padrão "only-changed-services"** ([ADR-002](../../../../docs/ADR-002-estrategia-bancos.md)) — PR-456 demonstra: clonou só pricing+order, reusa notification do QA. Economia de containers em PRs pequenos
+5. **Identidade do preview preservada cross-service** — quando PR-456 chama o qa-notification compartilhado, o `From:` ainda sai como `noreply+pr-456@` porque o `preview_id` é passado no body do request
+6. **Traefik labels = templating de service mesh** — `traefik.http.routers.pr123-front.rule=Host(\`pr-123.localhost\`)` é o mesmo padrão que vai pra `Istio VirtualService` no EKS
+
+### Derrubar v3
+
+```powershell
+docker compose -f docker-compose.cotacao-v3.yml down -v
+```
+
+---
+
+---
+
 ## 🎬 O que a POC demonstra
 
 A POC replica o **fluxo real de cotação de Seguro Auto da Youse** (`qa.youse.io` → "COTE GRÁTIS" → `cotacao.youse.com.br/seguro-auto/.../lead_info`) numa cópia visualmente idêntica, rodando 100% local:

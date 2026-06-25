@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cotação Auto · Youse</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; background: #fafafa; min-height: 100vh; }
+.preview-banner { color: #fff; padding: 10px 24px; font-size: 13px; text-align: center; }
+.preview-banner.qa { background: linear-gradient(90deg, #10b981, #059669); }
+.preview-banner.preview { background: linear-gradient(90deg, #ff6b35, #f7931e); }
+.preview-banner code { background: rgba(0,0,0,0.25); padding: 2px 8px; border-radius: 3px; }
+
+header { padding: 20px 48px; background: #fff; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 24px; }
+.logo { font-size: 26px; font-weight: 800; letter-spacing: -1px; }
+.logo .se { color: #ff6b35; }
+.steps { display: flex; gap: 8px; font-size: 13px; color: #9ca3af; margin-left: auto; }
+.steps .step { padding: 4px 12px; border-radius: 12px; background: #f3f4f6; }
+.steps .step.active { background: #ff6b35; color: #fff; font-weight: 600; }
+.steps .step.done { background: #10b981; color: #fff; }
+
+.container { max-width: 560px; margin: 60px auto; padding: 0 24px; }
+.card-form { background: #fff; border-radius: 16px; padding: 40px 36px; box-shadow: 0 4px 24px rgba(0,0,0,0.04); border: 1px solid #f0f0f0; }
+.intro { text-align: center; margin-bottom: 32px; }
+.intro .icon { width: 64px; height: 64px; background: #fff5ed; border-radius: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 16px; }
+.intro h1 { font-size: 28px; letter-spacing: -0.5px; margin-bottom: 8px; }
+.intro p { color: #6b7280; font-size: 15px; line-height: 1.5; }
+.field { margin-bottom: 20px; }
+.field label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.field input { width: 100%; padding: 14px 16px; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 16px; font-family: inherit; }
+.field input:focus { outline: none; border-color: #ff6b35; }
+button[type=submit] { width: 100%; background: #ff6b35; color: #fff; padding: 16px; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 12px; }
+button[type=submit]:hover:not(:disabled) { background: #e85d2e; }
+button[type=submit]:disabled { background: #d1d5db; cursor: not-allowed; }
+.disclaimer { font-size: 12px; color: #9ca3af; text-align: center; line-height: 1.5; margin-top: 20px; }
+.back { display: inline-block; margin-top: 16px; font-size: 13px; color: #6b7280; }
+</style>
+</head>
+<body>
+
+<div class="preview-banner" id="banner">carregando...</div>
+
+<header>
+    <a href="index.html" style="text-decoration:none;color:inherit" class="logo">you<span class="se">se</span></a>
+    <div class="steps">
+        <div class="step active">1. Você</div>
+        <div class="step">2. Veículo</div>
+        <div class="step">3. Cotação</div>
+    </div>
+</header>
+
+<div class="container">
+    <div class="card-form">
+        <div class="intro">
+            <div class="icon">👋</div>
+            <h1>Vamos começar?</h1>
+            <p>Pra começar, conta pra gente quem é você.<br>É rapidinho — em 2 minutos sua cotação fica pronta.</p>
+        </div>
+
+        <form id="leadForm">
+            <div class="field"><label>Nome completo</label><input type="text" id="name" placeholder="Maria da Silva" required></div>
+            <div class="field"><label>E-mail</label><input type="email" id="email" placeholder="maria@email.com" required></div>
+            <div class="field"><label>Celular</label><input type="tel" id="phone" placeholder="(11) 98765-4321" required></div>
+            <button type="submit" id="submitBtn">CONTINUAR →</button>
+            <p class="disclaimer">Ao continuar, você concorda com nossos Termos e Política de Privacidade.</p>
+        </form>
+        <div style="text-align:center"><a href="index.html" class="back">← voltar</a></div>
+    </div>
+</div>
+
+<script src="preview-banner.js"></script>
+<script>
+preview.load().then(info => {
+    const isQa = info.preview_id === 'qa';
+    const b = document.getElementById('banner');
+    b.className = 'preview-banner ' + (isQa ? 'qa' : 'preview');
+    b.innerHTML = isQa
+        ? '🟢 QA · DB compartilhado <code>monolithic_qa</code>'
+        : `🌿 PREVIEW <strong>${info.preview_id}</strong> · DB <code>preview_${info.preview_id}</code> (clonado)`;
+});
+
+document.getElementById('phone').addEventListener('input', e => {
+    let v = e.target.value.replace(/\D/g, '').slice(0, 11);
+    if (v.length > 10) v = v.replace(/^(\d{2})(\d{5})(\d{4}).*/, '($1) $2-$3');
+    else if (v.length > 6) v = v.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, '($1) $2-$3');
+    else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,5}).*/, '($1) $2');
+    e.target.value = v;
+});
+
+document.getElementById('leadForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+    try {
+        const r = await fetch('/api/leads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: document.getElementById('name').value.trim(),
+                email: document.getElementById('email').value.trim(),
+                phone: document.getElementById('phone').value.trim(),
+            }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const lead = await r.json();
+        sessionStorage.setItem('lead', JSON.stringify(lead));
+        window.location.href = 'vehicle.html';
+    } catch (err) {
+        alert('Erro: ' + err.message);
+        btn.disabled = false; btn.textContent = 'CONTINUAR →';
+    }
+});
+</script>
+</body>
+</html>
