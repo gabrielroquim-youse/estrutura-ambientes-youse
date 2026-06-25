@@ -80,6 +80,123 @@ docker compose -f docker-compose.cotacao-v2.yml down -v
 
 ---
 
+## ⚠️ POC simulada vs. produção — o que é "de verdade"
+
+**Importante deixar isso claro pra qualquer pessoa que olhar a POC:** nesta máquina, **não estamos puxando o banco real da Youse**. Estamos rodando um PostgreSQL local que **simula** a estrutura do banco real, pra provar que o conceito funciona sem depender de Infra.
+
+### O que é simulado vs. real
+
+| Item | POC local (`local-test/`) | Produção Youse |
+|---|---|---|
+| **Engine do banco** | PostgreSQL 14 Alpine (Docker) | RDS Aurora PostgreSQL 14.22 (`sa-east-1`) |
+| **Banco template** | `monolithic_qa` populado por seed SQL local | `monolithic_qa` real no RDS `monolithic` |
+| **Credenciais** | hardcoded (`youse` / `youse`) | AWS Secrets Manager (`qa/rds/admin/monolithic`) |
+| **Comando de clone** | `CREATE DATABASE preview_xxx TEMPLATE monolithic_qa` | **exatamente o mesmo comando** |
+| **Tempo medido** | 8.178 ms (cold), <500 ms (warm estimado) | ⏳ a validar |
+| **Massa de dados** | seed sintético (5 leads/veículos/cotações) | massa real de QA |
+| **Acesso de rede** | localhost | requer VPN GlobalProtect + Security Group |
+
+### O script que SABE puxar do RDS real já existe
+
+O arquivo [`environment-platform/poc-real/db/clone-db.sh`](../clone-db.sh) é **production-ready** e faz exatamente isso:
+
+```bash
+# Uso real (precisa estar na VPN + ter role IAM):
+./clone-db.sh you-123 monolithic monolithic_qa
+```
+
+Internamente ele:
+
+1. Busca credenciais via `aws secretsmanager get-secret-value --secret-id qa/rds/admin/monolithic`
+2. Conecta no RDS real (`monolithic-qa.cluster-xxx.sa-east-1.rds.amazonaws.com`)
+3. Roda `CREATE DATABASE preview_you_123 TEMPLATE monolithic_qa;`
+
+E o arquivo [`environment-platform/poc-real/db/rds-map.yaml`](../rds-map.yaml) tem o **inventário real dos RDS da Youse** auditado em junho/2026 (`shared-qa-v12`, `monolithic`, `pricing-engine`, `crivo`, `guidewire`, etc.).
+
+### O que falta pra rodar contra o RDS real
+
+3 dependências **só Infra entrega** (essa é justamente a pauta da call com o time deles):
+
+1. **VPN GlobalProtect** liberada pro runner do CircleCI / GitHub Actions
+2. **Role IAM** com permissão `secretsmanager:GetSecretValue` no `qa/rds/admin/*`
+3. **Security Group** do RDS aceitando conexão da sub-rede do runner
+
+Quando esses 3 itens estiverem prontos, o **mesmo `clone-db.sh`** (sem alterar 1 linha) clona o banco real. A POC local prova que o **comando funciona**; resta a Infra liberar o **acesso**.
+
+---
+
+## ✅ Roteiro de demonstração — "como provar que deu certo"
+
+Use esta sequência quando for mostrar a POC pra alguém (call com Infra, apresentação pra time, etc.). Cada passo gera uma **evidência visual diferente** de que o conceito funciona.
+
+### Checkpoint 1 — Os 3 ambientes estão isolados (UI)
+
+Abra as 3 abas lado a lado:
+
+| Aba | URL | O que confirmar |
+|---|---|---|
+| 1 | http://localhost:3000 | Banner azul "QA" |
+| 2 | http://localhost:3001 | Banner amarelo "PR-123 PREVIEW" + lista de services próprios |
+| 3 | http://localhost:3002 | Banner roxo "PR-456 CHANGED-ONLY" + notification marcada como `inherited-from-qa` |
+
+**Evidência:** 3 ambientes com identidade visual diferente, todos no ar simultaneamente.
+
+### Checkpoint 2 — Cada PR escreve no SEU banco (pgAdmin)
+
+```powershell
+# Antes da demo, anota as contagens iniciais:
+docker exec postgres-qa-simulado psql -U youse -d monolithic_qa  -c "select count(*) from leads"
+docker exec postgres-qa-simulado psql -U youse -d preview_pr123  -c "select count(*) from leads"
+docker exec postgres-qa-simulado psql -U youse -d preview_pr456  -c "select count(*) from leads"
+```
+
+Agora faça uma cotação em http://localhost:3001 (PR-123) e rode os mesmos `count(*)`:
+
+- `preview_pr123` aumentou +1 ✅
+- `monolithic_qa` e `preview_pr456` **não mudaram** ✅
+
+**Evidência:** isolamento real de dados — cada PR tem seu próprio banco, sem afetar QA nem outros PRs.
+
+### Checkpoint 3 — Identidade do PR cross-service (Mailpit)
+
+Faça uma cotação em http://localhost:3002 (PR-456) e abra http://localhost:8025:
+
+- Email chegou com `From: noreply+pr-456@preview.youse.test` ✅
+- **Mesmo o `notification-service` sendo o `qa-notification` compartilhado** (visível no header `X-Notification-Service-Preview: qa`) ✅
+
+**Evidência:** o padrão "only-changed-services" funciona — você reusa o notification do QA economizando containers, mas a identidade do PR é preservada via `preview_id` no body.
+
+### Checkpoint 4 — Comando de clone é o mesmo da produção
+
+```powershell
+docker exec postgres-qa-simulado psql -U youse -d postgres -c "\l+" | findstr preview
+```
+
+Mostra os 2 bancos preview criados pelo comando:
+
+```sql
+CREATE DATABASE preview_pr123 TEMPLATE monolithic_qa;
+CREATE DATABASE preview_pr456 TEMPLATE monolithic_qa;
+```
+
+**Evidência:** o comando que roda local é **exatamente** o que o `clone-db.sh` vai rodar no RDS real. Só muda o host de conexão.
+
+### Checkpoint 5 — Tudo cabe num PR de PRs (GitHub)
+
+Mostre o repo: https://github.com/gabrielroquim-youse/estrutura-ambientes-youse
+
+- 15 containers + 3 microservices + Traefik + clones de DB
+- Stack completa = **1 arquivo `docker-compose.cotacao-v3.yml`** (310 linhas)
+- Validação automatizada = **1 script `test-v3.ps1`** (60 linhas)
+
+**Evidência:** complexidade gerenciável — não precisa de Kubernetes nem Helm pra provar o conceito.
+
+---
+
+
+
+---
+
 ## 🆕 v3 — Multi-preview simultâneo (3 ambientes em paralelo)
 
 A v2 demonstra **1 preview com 1 API monolítica**. A **v3** quebra a API em 3 microsserviços (`pricing-engine`, `order-service`, `notification-service`) e roda **3 ambientes lado a lado** (QA + 2 PRs), simulando o cenário real Youse com várias squads abrindo PR ao mesmo tempo.
